@@ -52,6 +52,21 @@ bed_z = 250;              // printer bed Z (mm) - not used for splitting yet (pa
 split_margin = 6;         // extra clearance subtracted from bed size before deciding to split
 wall            = 2.4;    // shell wall thickness (matches OEM spirit)
 tol             = 0.25;   // general fit clearance
+// Standard pilot hole for every M3 screw post/boss THAT THREADS DIRECTLY
+// INTO PRINTED PLASTIC throughout the project (board standoffs' own real
+// mounting-hole sizes are fixed by the physical PCBs and excluded -- this
+// is only for posts this design itself owns) -- per direction, sized to
+// work with EITHER an M3 self-tapping screw OR an M3 heat-set brass
+// insert in the same printed hole. Pure self-tap alone wants ~2.5-2.8mm
+// for the best thread bite; heat-set inserts are commonly speced for a
+// ~4.0-4.2mm hole. There's no single size that's ideal for both -- 3.2mm
+// is a middle-ground compromise (a heat-set insert's own installation
+// heat still melts/compresses the surrounding PLA enough for a solid fit
+// starting from this size, while a self-tap screw still gets real thread
+// engagement, just looser than a dedicated self-tap-only pilot would
+// give). Flagged like the file's other placeholder dimensions -- true up
+// against the specific insert/screw you actually use.
+m3_pilot_d      = 3.2;
 $fn             = 48;     // circle resolution (raise for final render, lower for fast preview)
 
 /* [Keyboard attachment mode] */
@@ -116,13 +131,9 @@ rear_margin         = case_margin - 9; // ~4.17mm -- per direction, after a
                             // that matters (outer shell, inner cavity, rear
                             // support ribs, raceway, rear panel notches) --
                             // front/left/right keep the original case_margin.
-front_deck_h       = 42;   // low front section height (over keyboard/front 2/3)
-                            // (raised from 26 -> 42 when the main case became a
-                            // top/bottom clamshell: needs to clear parting_h with
-                            // a bit of top-shell roof left over -- see below)
-rear_tower_h       = 62;   // tall rear section height (louvered "spine")
-rear_break_front   = 0.52; // fraction of board depth where the ramp begins
-rear_break_back    = 0.74; // fraction of board depth where the ramp reaches full height
+// front_deck_h / rear_tower_h are computed further down (see "TOP SHELL
+// STYLING" below main_depth) -- they depend on parting_h and the floppy bay
+// stack, neither of which exist yet at this point in the file.
 corner_r           = 5;    // outer corner rounding radius -- matches the
                             // explicit 5mm 3D edge fillet request (see
                             // edge_fillet_r / rounded_footprint_solid
@@ -385,12 +396,118 @@ module louver_bank(n, slot_w, gap, run_len, cut_depth) {
                 cube([run_len, cut_depth, slot_w]);
 }
 
+module louver_bank_vertical(n, slot_w, gap, run_len, cut_depth) {
+    // Same idea as louver_bank(), but for a wall whose face normal is X
+    // (the side walls): each slot runs VERTICALLY (long axis in Z, run_len
+    // tall -- matching grooves that wrap DOWN from the roofline) and the n
+    // slots are stacked along Y instead of Z. Bores through in X (cut_depth).
+    total = n*slot_w + (n-1)*gap;
+    for (i = [0:n-1])
+        translate([0, -total/2 + i*(slot_w+gap), 0])
+            translate([-cut_depth/2, -slot_w/2, -run_len/2])
+                cube([cut_depth, slot_w, run_len]);
+}
+
 // ============================================================================
 // MAIN (MOTHERBOARD) SHELL
 // ============================================================================
+
+// ---- TOP SHELL STYLING: skirt + continuous slope, no flat "table" ----
+// Per direction: the front has NO flat plateau -- a short vertical "skirt"
+// (15-20mm) right where the top shell meets the bottom shell's parting
+// line, then the roof climbs continuously at a fixed angle all the way back
+// to the tall tower. The tower's own height is driven by what it actually
+// needs to hold -- two side-by-side 3.5" floppy bays (see FLOPPY BAY below)
+// -- not an arbitrary styling constant like the old front_deck_h/
+// rear_tower_h were.
+top_skirt_h   = 8;    // vertical wall height above parting_h at the front edge -- reduced
+                        // from 18 per direction ("straight up band interface to the base...
+                        // can be reduced to 8mm")
+top_slope_deg = 25;   // front-to-back roof slope, measured from VERTICAL per
+                        // direction (NOT from horizontal) -- so this is a steep,
+                        // near-vertical rise leaning back only 25 deg, not a
+                        // gentle ramp. run = rise * tan(top_slope_deg), the
+                        // opposite of the usual rise/tan(angle)-from-horizontal
+                        // formula -- see top_ramp_run below.
+
+// ---- FLOPPY BAY (2x, side by side, 3.5" front-loading from the tower's
+// user-facing side, per direction) ----
+// Real drive envelope -- a standard 3.5" floppy drive, NOT a distinct
+// "half-height" 3.5" SKU (those aren't a commodity part the way half-height
+// 5.25" drives were) -- PLACEHOLDER data (see CLAUDE.md's own PLACEHOLDER
+// section) until checked against a real drive's datasheet.
+floppy_w            = 101.6;
+floppy_h            = 25.4;
+floppy_d            = 120;   // real drive depth -- per direction, the specific part in mind
+                               // is a Gotek drive emulator (~120mm deep), not a real
+                               // full-depth 3.5" FDD; the tower now has ~137mm of
+                               // available depth behind the bay face (see
+                               // main_floppy_bay_brackets()), comfortably enough.
+floppy_fit_clear    = 3;     // added to the through-opening so a real drive slides in
+floppy_bay_gap      = 20;    // divider width between the two bays -- widened from 10
+                               // per direction ("a bit more separation between the bays")
+floppy_bay_margin   = 20;    // decorative surround margin around the bay PAIR, LEFT/RIGHT only
+floppy_bay_margin_v = 8;     // surround margin, TOP/BOTTOM -- kept much smaller than the L/R
+                               // margin per direction ("much taller than it needs to be" --
+                               // 20mm top AND bottom around a 25.4mm-tall opening was most
+                               // of what drove the tower height, not anything structural)
+floppy_face_w = 2*floppy_w + floppy_bay_gap + 2*floppy_bay_margin;
+floppy_face_h = floppy_h + 2*floppy_bay_margin_v;
+
+// Standard 3.5" drive side-mounting screw positions, measured from the
+// drive's own FRONT bezel plane -- PLACEHOLDER, not yet checked against a
+// real drive's datasheet. Kept as real-world offsets from the front (NOT
+// rescaled to the bay's own shorter recess) per direction, so a real
+// drive's screw holes still line up even though the bracket rails
+// themselves are truncated short of the full drive depth.
+floppy_screw_front_offsets = [12, 92]; // two mounting points along the drive's depth
+floppy_screw_z_offset      = 6.5;       // up from the drive's own bottom edge
+
+// ---- Tower height, driven by the bay stack (not picked by hand) ----
+bay_face_z0  = parting_h + 6 + 19.05;    // footer below the recessed face -- includes an
+                                           // extra 3/4in (19.05mm) of clearance underneath
+                                           // the bays per direction (was just 6mm); this
+                                           // raises the whole bay assembly, and rear_tower_h
+                                           // with it, since rear_tower_h is still derived
+                                           // from bay_face_z0 + floppy_face_h + roof margin
+bay_face_z1  = bay_face_z0 + floppy_face_h;
+rear_tower_h = bay_face_z1 + 8;          // + roof clearance above the bays
+front_deck_h = parting_h + top_skirt_h;  // front wall height (the "skirt")
+
+// Ramp run needed to climb from the front skirt to the tower height at
+// top_slope_deg -- this, not an arbitrary fraction of the case depth (the
+// old rear_break_front/rear_break_back), is what determines where the flat
+// tower actually begins. top_slope_deg is measured from VERTICAL (per
+// direction), so run = rise * tan(angle) here, not rise / tan(angle).
+top_ramp_run   = (rear_tower_h - front_deck_h) * tan(top_slope_deg);
+top_front_wall_y = board_d + case_margin; // same value as main_front_y (defined
+                                            // later) -- recomputed here since
+                                            // top-level plain expressions
+                                            // evaluate in file order, and
+                                            // main_front_y isn't assigned yet
+                                            // at this point in the file.
+
 main_depth = board_d + case_margin + rear_margin;
-main_break1_y = main_depth * rear_break_front;
-main_break2_y = main_depth * rear_break_back;
+main_break2_y = top_front_wall_y;         // no flat front section at all -- the ramp
+                                            // runs straight to the front wall itself
+main_break1_y = max(main_break2_y - top_ramp_run, 5); // clamped so it can never go
+                                                          // negative/degenerate if the
+                                                          // ramp run ever exceeds the
+                                                          // available depth
+
+// Shared Y positions for the wrap-around groove pattern (see
+// main_louvers(), which builds the whole continuous side-corner-top sweep
+// per groove_y).
+function groove_y_positions(n, slot_w, gap, center_y) =
+    let(total = n*slot_w + (n-1)*gap)
+    [for (i = [0:n-1]) center_y - total/2 + i*(slot_w+gap)];
+groove_pitch = louver_w + louver_gap;
+groove_span = main_break1_y * 0.95; // per direction: "3 or four more" grooves,
+                                       // continuing across the top and around to
+                                       // the other side -- wider span than before
+groove_count = max(1, min(louver_count, floor((groove_span + louver_gap) / groove_pitch))) + 4;
+groove_center_y = main_break1_y / 2;
+groove_ys = groove_y_positions(groove_count, louver_w, louver_gap, groove_center_y);
 
 // Y=0 is the REAR (connector) edge, so the tall louvered tower -- which
 // houses the rear panel and, per the reference photo, sits at the BACK of
@@ -422,9 +539,32 @@ module y_wedge_block(x0, x1, h_rear, h_front) {
     // whatever it's intersected with there -- a +/-1mm margin here (this
     // bug's previous value) is not generous enough once case_margin=6 is
     // taken into account, and it deleted the entire rear wall face.
+    //
+    // BUT: that front-side margin must NOT be part of the hull() that forms
+    // the ramp, or the ramp stops being "flat-ramp-flat" at all. hull()ing
+    // the rear box directly against the (far-extended) front box makes the
+    // hull's own convex boundary run from the rear box's top corner
+    // (main_break1_y, h_rear) all the way to the FRONT box's FAR corner
+    // (main_depth+margin, h_front) -- the front box's NEAR corner (right at
+    // main_break2_y, where the ramp is supposed to end) sits strictly below
+    // that straight line and never becomes a hull vertex, so the "ramp"
+    // silently drags on almost to the outer front wall instead of ending at
+    // main_break2_y like local_wedge_h() (used everywhere else to size
+    // features against this same roofline, e.g. the top/bottom screw bosses)
+    // assumes. Caught via a disconnected boss: local_wedge_h() said the roof
+    // was already down at h_front by the boss's Y, but the real roof there
+    // was still ~11mm higher mid-ramp, so the boss fell short of it.
+    // Fix: hull() only the rear box against a paper-thin anchor slice
+    // sitting exactly at main_break2_y (so the ramp really ends there), then
+    // union() in the far-extended flat front box separately -- it still
+    // reaches past the real front wall, but as a plain flat slab, not a
+    // hull() operand that can bend the ramp's endpoint.
     margin = 50;
-    hull() {
-        translate([x0, -margin, 0]) cube([x1-x0, main_break1_y+margin, max(h_rear, 0.01)]);
+    union() {
+        hull() {
+            translate([x0, -margin, 0]) cube([x1-x0, main_break1_y+margin, max(h_rear, 0.01)]);
+            translate([x0, main_break2_y, 0]) cube([x1-x0, 0.01, max(h_front, 0.01)]);
+        }
         translate([x0, main_break2_y, 0]) cube([x1-x0, (main_depth-main_break2_y)+margin, max(h_front, 0.01)]);
     }
 }
@@ -434,7 +574,17 @@ module y_wedge_block(x0, x1, h_rear, h_front) {
 // cutouts, no styling). Much simpler than the wedge: just the rounded-rect
 // footprint, extruded straight up.
 module main_bottom_outer_solid() {
-    rounded_footprint_solid(case_margin, 0, parting_h, rear = rear_margin, br = bottom_fillet_r);
+    // r=0: the bottom shell's own TOP edge (Z=parting_h, where it meets
+    // the top shell's parting line) must stay a plain flat/sharp wall, not
+    // rounded_footprint_solid()'s default top-edge treatment (edge_fillet_r
+    // = 5mm) -- per direction, that top edge is a deliberate ~1.6mm
+    // vertical lip above the standoff height (parting_h = standoff_height
+    // + pcb_edge_lip_height), and a 5mm chamfer completely swallows a
+    // feature that short, replacing it with what reads as a bevel instead
+    // of the intended lip ("too short... has a 45deg inward bevel").
+    // br=bottom_fillet_r (2mm) is unaffected -- that's the OTHER end
+    // (Z=0, the build plate), a separate, deliberately-requested fillet.
+    rounded_footprint_solid(case_margin, 0, parting_h, r = 0, rear = rear_margin, br = bottom_fillet_r);
 }
 module main_bottom_inner_cavity() {
     // open at the top rim (pokes through by 5mm so there's no ceiling)
@@ -445,15 +595,85 @@ module main_bottom_inner_cavity() {
 // from parting_h up to the roofline. Same footprint-extrude +
 // height-clipping-wedge-block technique as before, just z-shifted to start
 // at parting_h instead of 0.
+// Rounds a single straight OUTER (convex) edge -- where a vertical wall
+// meets the flat top -- with a TRUE quarter-circle fillet, not the
+// chamfer the hull()-between-two-flat-slabs technique (rounded_footprint_
+// solid's own top cap, used elsewhere) actually produces: hull() of two
+// parallel flat plates at different heights/insets tapers LINEARLY between
+// them, which is a 45-degree-ish bevel, confirmed by rendering a cross-
+// section -- not the curved "5mm radius" round asked for here. This uses
+// the standard notch-cut-plus-cylinder construction instead: within the
+// r x r square where the sharp corner would be, subtracting a cylinder
+// (radius r, axis along the edge's own run direction) from that square
+// leaves exactly the sharp sliver beyond the round; subtracting THAT
+// sliver from the box leaves a true quarter-circle profile.
+module round_top_edge_x(edge_y, r, x0, x1, z1) {
+    // Edge running along X, where Z=z1 (top) meets Y=edge_y (a wall),
+    // material at Y > edge_y.
+    difference() {
+        translate([x0, edge_y, z1-r]) cube([x1-x0, r, r]);
+        translate([x0, edge_y+r, z1-r]) rotate([0,90,0]) cylinder(r=r, h=x1-x0);
+    }
+}
+module round_top_edge_y(edge_x, dir, r, y0, y1, z1) {
+    // Edge running along Y, where Z=z1 (top) meets X=edge_x (a wall).
+    // dir=-1: material at X < edge_x (a max-X wall); dir=+1: material at
+    // X > edge_x (a min-X wall).
+    cx = edge_x + dir*r;
+    difference() {
+        translate([dir > 0 ? edge_x : edge_x - r, y0, z1-r]) cube([r, y1-y0, r]);
+        translate([cx, y0, z1-r]) rotate([-90,0,0]) cylinder(r=r, h=y1-y0);
+    }
+}
+module main_top_edge_round_cut() {
+    // Per direction: round the top-back/top-left/top-right edges (NOT
+    // top-front, which is the sloped ramp -- there's no sharp horizontal
+    // edge there to round) with a 5mm radius. Y-range for the left/right
+    // edges overshoots slightly past main_break1_y (the flat tower's own
+    // front extent); harmless, since the wedge is already well below
+    // z1-r there and this cut has nothing to remove past that point.
+    r = edge_fillet_r;
+    z1 = rear_tower_h;
+    min_x = -case_margin;
+    max_x = board_w + case_margin;
+    x_span0 = min_x - 1;
+    x_span1 = max_x + 1;
+    y0 = -rear_margin - 1;
+    y1 = main_break1_y + 1;
+    round_top_edge_x(-rear_margin, r, x_span0, x_span1, z1);
+    round_top_edge_y(max_x, -1, r, y0, y1, z1);
+    round_top_edge_y(min_x, 1, r, y0, y1, z1);
+
+    // The two straight-edge cuts above overlap imperfectly right where the
+    // back edge meets each side edge (independent circular cuts, not a
+    // true compound 3D fillet) -- left a few non-manifold edges there
+    // (still one valid connected solid, just an untidy seam). Since
+    // corner_r and edge_fillet_r are conveniently the same 5mm, this
+    // compound corner is exactly a spherical octant: same notch-minus-
+    // primitive technique as the straight edges, just with a sphere
+    // instead of a cylinder, cleanly covering both cuts' overlap.
+    difference() {
+        translate([min_x, -rear_margin, z1-r]) cube([r, r, r]);
+        translate([min_x+r, -rear_margin+r, z1-r]) sphere(r=r);
+    }
+    difference() {
+        translate([max_x-r, -rear_margin, z1-r]) cube([r, r, r]);
+        translate([max_x-r, -rear_margin+r, z1-r]) sphere(r=r);
+    }
+}
+
 module main_top_outer_solid() {
     // Padded 2mm above the wedge block's own max height so the two solids
     // being intersected never share an exactly coincident flat top plane --
     // see main_bottom/top_inner_cavity below for why that matters (CGAL
     // treats an exact coincidence as degenerate and renders visible sliver
     // artifacts).
-    intersection() {
-        solid_from_footprint(case_margin, parting_h, max(rear_tower_h, front_deck_h) + 2, rear = rear_margin);
-        y_wedge_block(-500, board_w+500, rear_tower_h, front_deck_h);
+    difference() {
+        intersection() {
+            solid_from_footprint(case_margin, parting_h, max(rear_tower_h, front_deck_h) + 2, rear = rear_margin);
+            y_wedge_block(-500, board_w+500, rear_tower_h, front_deck_h);
+        }
+        main_top_edge_round_cut();
     }
 }
 module main_top_inner_cavity() {
@@ -468,39 +688,73 @@ module main_top_inner_cavity() {
     }
 }
 
+// ---- Groove geometry: half-round profile, continuous/unbroken across the
+// newly-rounded top corner -- per direction ("the groove should be half
+// round, as if a half cylinder was removed" + "continuous/unbroken...
+// across that radius"). A cylinder (or, along the curved corner, a chain
+// of hulled spheres) with its axis running ALONG the groove's own path and
+// positioned exactly AT the material's outer surface only ever removes the
+// "inward half" of its own cross-section -- the other half is in open air
+// -- which is exactly a half-round channel; sweeping that same radius
+// along the whole path (straight side wall -> the 5mm corner arc ->
+// straight top) keeps it visually unbroken the whole way around.
+groove_r = louver_w / 2;
+
+module groove_vertical_side(wall_x, dir, y, z0, z1, through_depth) {
+    // Half-round entry (cylinder axis along Z, at the wall's own outer
+    // surface) + a plain straight continuation so it actually penetrates
+    // the full wall thickness for ventilation -- the half-round alone
+    // (depth = groove_r) can't reach through a case_margin-thick wall.
+    x_start = dir > 0 ? wall_x : wall_x - through_depth;
+    union() {
+        translate([wall_x, y, z0]) cylinder(r = groove_r, h = z1 - z0);
+        translate([x_start, y - groove_r, z0])
+            cube([through_depth, groove_r*2, z1 - z0]);
+    }
+}
+
+module groove_corner_sweep(cx, cz, R, theta0, theta1, y, n = 12) {
+    // Chain of hulled sphere-pairs along the sampled arc -- a sphere is
+    // radially symmetric in every direction, so sweeping one along ANY
+    // path (straight or curved) gives the correct half-round cross-section
+    // the whole way, without having to track the path's own tangent
+    // direction. Decorative depth only (same groove_r as the straight
+    // segments, naturally shallow -- no separate depth parameter needed).
+    for (i = [0:n-1]) {
+        t0 = theta0 + (theta1-theta0)*i/n;
+        t1 = theta0 + (theta1-theta0)*(i+1)/n;
+        hull() {
+            translate([cx + R*cos(t0), y, cz + R*sin(t0)]) sphere(r = groove_r);
+            translate([cx + R*cos(t1), y, cz + R*sin(t1)]) sphere(r = groove_r);
+        }
+    }
+}
+
+module groove_horizontal_top(z, y, x0, x1) {
+    translate([x0, y, z]) rotate([0,90,0]) cylinder(r = groove_r, h = x1 - x0);
+}
+
 module main_louvers() {
-    // The tall tower sits at LOW Y (rear panel side). Vents go on its rear
-    // vertical face (min Y, the true back of the machine) and its left
-    // vertical face (min X). Only the portion of the tower that's part of
-    // the TOP shell (parting_h..rear_tower_h) is available for the bank now.
-    min_y = -rear_margin;
+    // Vents go on the left/right side walls only -- per direction, no
+    // vents on the back wall. Only the portion of the tower that's part of
+    // the TOP shell (parting_h..rear_tower_h) is available for the bank.
     min_x = -case_margin;
     max_x = board_w + case_margin;
-    mid_x = (min_x+max_x)/2;
-    run_len = (max_x-min_x)*0.8;
+    r = edge_fillet_r; // matches the top-edge rounding radius exactly, so the
+                         // corner sweep below follows the SAME arc as the case's
+                         // own rounded edge -- true continuity, not an approximation
+    side_vent_z0 = max(41.85 + 2, parting_h + 6);
+    side_vent_z1 = rear_tower_h - r; // stop right where the corner arc begins
+    top_x0 = min_x + r; // where the top groove begins, past the left corner arc
+    top_x1 = max_x - r; // where the top groove ends, before the right corner arc
 
-    // Fit the bank within the top shell's tower wall height, leaving margin
-    // at the roofline and at the parting-line rim, so slots never poke
-    // through either.
-    louver_margin_top = 6;
-    louver_margin_bottom = 6;
-    tower_top_span = rear_tower_h - parting_h;
-    available_h = tower_top_span - louver_margin_top - louver_margin_bottom;
-    pitch = louver_w + louver_gap;
-    fit_count = max(1, min(louver_count, floor((available_h + louver_gap) / pitch)));
-    bank_center_z = parting_h + louver_margin_bottom + available_h/2;
-
-    // rear face vents (true back of the machine)
-    translate([mid_x, min_y, bank_center_z])
-        louver_bank(fit_count, louver_w, louver_gap, run_len, louver_depth*4);
-
-    // Side vents, over the tower's Y-extent only (0..break1), on the
-    // max-X wall -- deliberately the wall WITHOUT the cart slot (which is
-    // on the min-X wall after the board_pt mirror fix), so the two don't
-    // spatially collide.
-    translate([max_x, main_break1_y/2, bank_center_z])
-        rotate([0,0,90])
-            louver_bank(fit_count, louver_w, louver_gap, main_break1_y*0.9, louver_depth*4);
+    for (y = groove_ys) {
+        groove_vertical_side(min_x, 1, y, side_vent_z0, side_vent_z1, louver_depth*4);
+        groove_vertical_side(max_x, -1, y, side_vent_z0, side_vent_z1, louver_depth*4);
+        groove_corner_sweep(min_x + r, rear_tower_h - r, r, 180, 90, y);
+        groove_corner_sweep(max_x - r, rear_tower_h - r, r, 0, 90, y);
+        groove_horizontal_top(rear_tower_h, y, top_x0, top_x1);
+    }
 }
 
 // U-shaped notches open at the TOP shell's own bottom rim (parting_h),
@@ -511,16 +765,38 @@ module main_louvers() {
 // just an open channel with zero overhang, no supports needed. Sizes are
 // still the same placeholder commodity-connector envelopes flagged in the
 // file header -- only the shape (closed hole -> open notch) changed here.
-module rim_notch_y(x, wall_y, width, height, depth) {
-    translate([x - width/2, wall_y, parting_h - 1])
-        cube([width, depth, height + 1]);
+module rim_notch_y(x, wall_y, width, height, depth, r = 0) {
+    // r > 0: rounded-corner cutout (per direction, "round them off a bit"),
+    // reusing the same rounded_rect_prism_y() helper the floppy bay notch
+    // uses. r = 0 (default): the original sharp-cornered cutout.
+    if (r > 0)
+        rounded_rect_prism_y(x - width/2, x + width/2, parting_h - 1, parting_h + height, wall_y, wall_y + depth, r);
+    else
+        translate([x - width/2, wall_y, parting_h - 1])
+            cube([width, depth, height + 1]);
 }
-module rim_notch_x(wall_x, y, width, height, depth, dir = -1) {
+module rim_notch_x(wall_x, y, width, height, depth, dir = -1, taper = 0, taper_grow = 0) {
     // dir=-1: wall_x is a max-X (right, in the old pre-mirror sense) wall,
     //         cut inward toward -X.
     // dir=+1: wall_x is a min-X wall, cut inward toward +X. Cart slot uses
     //         this now that it's on the min-X wall (post board_pt mirror).
+    // taper > 0: flares the opening at the wall's own OUTER face, wider by
+    //            taper_grow (total, split across width and height) right
+    //            at the surface, narrowing back down to the nominal
+    //            width x height over a `taper` mm run -- a lead-in funnel
+    //            to help guide something into the slot by feel.
     x0 = (dir < 0) ? wall_x - depth : wall_x;
+    if (taper > 0) {
+        x_in = (dir < 0) ? wall_x - taper : wall_x + taper; // taper's inward (nominal-size) end
+        outer_off = (dir < 0) ? -0.01 : 0;
+        inner_off = (dir < 0) ? -0.01 : 0;
+        hull() {
+            translate([wall_x + outer_off, y - (width+taper_grow)/2, parting_h - 1])
+                cube([0.01, width+taper_grow, height+taper_grow+1]);
+            translate([x_in + inner_off, y - width/2, parting_h - 1])
+                cube([0.01, width, height + 1]);
+        }
+    }
     translate([x0, y - width/2, parting_h - 1])
         cube([depth, width, height + 1]);
 }
@@ -576,25 +852,38 @@ module main_usbc_trigger_standoffs_holes() {
             standoff_peg_hole(0, 0, usbc_trigger_hole_d, usbc_trigger_boss_h);
 }
 
+// Real cartridge edge-connector envelope, per direction (replaces the
+// earlier 92x19 placeholder, an unverified guess at a "standard 40-pos
+// .1in edge-card envelope"), plus insertion clearance and a lead-in funnel
+// at the panel face to help guide the cartridge in.
+cart_slot_w           = 108;
+cart_slot_h           = 23;
+cart_slot_margin_w    = 4;  // total width clearance (both sides combined)
+cart_slot_margin_h    = 3;  // total height clearance
+cart_slot_taper       = 10; // lead-in funnel depth at the panel's outer face
+cart_slot_taper_grow  = 6;  // how much wider the funnel is right at the surface (total)
+
 module main_connector_cutouts_top() {
     notch_depth = case_margin*3;
+    notch_r = 2; // per direction, "round them off a bit" -- except SW3, kept sharp/square
     for (c = board_connectors) {
         refdes = c[0]; x = c[1]; y = c[2]; kind = c[5];
         if (kind == "din6" || kind == "din4" || kind == "din5" || kind == "rgb_din8")
-            rim_notch_y(x, -rear_margin, 15.9, 20, notch_depth);
+            rim_notch_y(x, -rear_margin, 15.9, 20, notch_depth, notch_r);
         else if (kind == "rca")
-            rim_notch_y(x, -rear_margin, 10.5, 16, notch_depth);
+            rim_notch_y(x, -rear_margin, 10.5, 16, notch_depth, notch_r);
         else if (kind == "power_switch")
-            rim_notch_y(x, -rear_margin, 14, 14, notch_depth);
+            rim_notch_y(x, -rear_margin, 14, 14, notch_depth, notch_r);
         else if (kind == "slide_switch")
-            rim_notch_y(x, -rear_margin, 10, 11, notch_depth);
+            rim_notch_y(x, -rear_margin, 10, 11, notch_depth); // SW3 -- stays sharp, per direction
         else if (kind == "reset_button")
-            rim_notch_y(x, -rear_margin, 8, 12, notch_depth);
+            rim_notch_y(x, -rear_margin, 8, 12, notch_depth, notch_r);
         else if (kind == "cart_slot")
-            rim_notch_x(-case_margin, y, 92, 13 + 6, notch_depth, dir = 1);
+            rim_notch_x(-case_margin, y, cart_slot_w + cart_slot_margin_w, cart_slot_h + cart_slot_margin_h,
+                        notch_depth, dir = 1, taper = cart_slot_taper, taper_grow = cart_slot_taper_grow);
         // "cart_slot" exits the RIGHT-SIDE panel (min X, post board_pt mirror, still case_margin), all others exit the REAR panel (min Y, now rear_margin)
     }
-    rim_notch_y(usbc_power_x, -rear_margin, 10, 5, notch_depth);
+    rim_notch_y(usbc_power_x, -rear_margin, 10, 5, notch_depth, notch_r);
 }
 
 module main_usb_passthrough_front() {
@@ -639,6 +928,188 @@ module main_pizero_hdmi_mount() {
         for (h = pi_zero_holes)
             translate([h[0], h[1], 0])
                 cylinder(d=3.4, h=6);
+}
+
+// ============================================================================
+// FLOPPY BAYS (2x, side by side, 3.5", front-loading from the tower's
+// user-facing side) -- per direction. See floppy_* constants above
+// main_depth for the real-drive envelope, margins, and the PLACEHOLDER
+// bracket screw offsets.
+//
+// Simpler construction per direction, replacing an earlier wall+taper
+// version that still showed a visible stepped "L shape + triangle"
+// artifact: think of the whole top shell as a solid rectangular block with
+// a triangular wedge cut off the front (that's exactly what the TOP SHELL
+// STYLING section above already builds). Now take a single rounded-rect
+// "plane" sized to fit both bays + their margin + the gap between them
+// (floppy_face_w x floppy_face_h) and slide it back (toward lower Y, where
+// the wedge is taller) until its own top edge just reaches the wedge's
+// natural roofline -- that Y position is floppy_notch_y0 below. From there
+// forward to the front, hollow out everything within that rounded-rect
+// footprint. Nothing needs to taper or fit exactly: wherever the wedge is
+// still taller than the notch, a flat roof remains over it; wherever the
+// wedge has already dropped below the notch's own height (near the front),
+// the cut simply opens all the way through on its own -- no separate wall,
+// no separate taper piece, no overhang.
+floppy_notch_corner_r = 8; // rounded-rect corner radius for the notch itself
+floppy_notch_y0_raw = main_break1_y
+    + (bay_face_z0 + floppy_face_h - rear_tower_h) * (main_break2_y - main_break1_y)
+      / (front_deck_h - rear_tower_h);
+floppy_notch_y0 = min(max(floppy_notch_y0_raw, main_break1_y), main_break2_y); // clamped to
+                                                                                  // the ramp's own
+                                                                                  // valid Y range
+floppy_rail_t  = 3;     // bracket rail fin thickness (X)
+floppy_rail_y0 = max(-rear_margin + 3, floppy_notch_y0 - floppy_d); // as far back as
+                          // available before the rear wall, capped by the real drive depth
+
+// Rounded-rect solid extruded along Y (cross-section in the X-Z plane) --
+// shared by the notch cut, the duct walls around it, and the bulkhead
+// plate below, so all three stay geometrically consistent by construction.
+module rounded_rect_prism_y(x0, x1, z0, z1, y0, y1, r) {
+    hull()
+        for (xx = [x0 + r, x1 - r])
+            for (zz = [z0 + r, z1 - r])
+                translate([xx, y0, zz])
+                    rotate([-90, 0, 0])
+                        cylinder(r = r, h = y1 - y0);
+}
+
+module main_floppy_bay_notch() {
+    // -1 on y0: starts a hair before the tangent point, so the cut
+    // genuinely overlaps solid material there instead of just grazing it
+    // at an exact coincident height (the same coincident-face issue
+    // documented on rounded_footprint_solid). y1 well past the front wall,
+    // for a clean full cut-through.
+    rounded_rect_prism_y(
+        board_w/2 - floppy_face_w/2, board_w/2 + floppy_face_w/2,
+        bay_face_z0, bay_face_z0 + floppy_face_h,
+        floppy_notch_y0 - 1, main_front_y + 5,
+        floppy_notch_corner_r);
+}
+
+// Per direction: the notch above leaves the tunnel completely open into
+// the general case interior -- it needs its own walls (a proper enclosed
+// duct), plus a flat bulkhead plate with the two actual drive-sized holes
+// rather than one shared opening for the whole pair.
+//
+// First attempt at the duct walls ADDED a hollow tube (the notch's own
+// cross-section expanded outward by wall thickness) on top of the already-
+// finished shell. That stuck out past the case's own natural silhouette
+// wherever the wedge had already sloped down below the duct's height --
+// exactly the region nearer the front, i.e. most of it -- a visible
+// protrusion (per direction). Fixed per direction, by folding this into
+// the shell's OWN construction instead of bolting it on afterward: shield
+// this same expanded footprint from the general inner-cavity cut (see
+// main_case_top()), so the OUTER solid's own natural material -- which by
+// definition never exceeds the case's own silhouette -- stays in place as
+// the duct's walls. Nothing is ever added past where solid material
+// already was, so there's no way for this to protrude.
+floppy_duct_wall_t = wall;
+module main_floppy_bay_duct_protect() {
+    rounded_rect_prism_y(
+        board_w/2 - floppy_face_w/2 - floppy_duct_wall_t, board_w/2 + floppy_face_w/2 + floppy_duct_wall_t,
+        bay_face_z0 - floppy_duct_wall_t, bay_face_z0 + floppy_face_h + floppy_duct_wall_t,
+        floppy_notch_y0 - 1, main_front_y + 5,
+        floppy_notch_corner_r + floppy_duct_wall_t);
+}
+
+// The bulkhead plate is a genuinely ADDED solid (it has to be -- the notch
+// already cut straight through whatever was there, including the front
+// wall itself), so it's held to the same no-protrusion rule by
+// positioning, not protection: its own height (floppy_face_h) is taller
+// than the front wall's natural height (front_deck_h), so sitting it
+// flush against the front wall would stick it up above the surrounding
+// skirt line. Instead it sits at floppy_notch_y0 -- exactly where the
+// wedge's natural height already equals the plate's own height (the same
+// point the notch itself is anchored to) -- so its outward face is flush
+// with the surrounding material, not proud of it. The open notch continues
+// from there out to the front wall as a shrouded approach to the bays,
+// rather than the bulkhead sitting right at the front edge.
+floppy_bulkhead_t = 4;
+floppy_bulkhead_y0 = floppy_notch_y0 - floppy_bulkhead_t;
+module main_floppy_bay_bulkhead_solid() {
+    rounded_rect_prism_y(
+        board_w/2 - floppy_face_w/2, board_w/2 + floppy_face_w/2,
+        bay_face_z0, bay_face_z0 + floppy_face_h,
+        floppy_bulkhead_y0, floppy_notch_y0,
+        floppy_notch_corner_r);
+}
+module main_floppy_bay_bulkhead_holes() {
+    // The two actual drive-sized openings -- per direction, cut through
+    // the bulkhead specifically, not the whole notch.
+    opening_w = floppy_w + floppy_fit_clear;
+    opening_h = floppy_h + floppy_fit_clear;
+    opening_z0 = bay_face_z0 + floppy_bay_margin_v - floppy_fit_clear/2;
+    for (i = [-1, 1])
+        translate([board_w/2 + i*(floppy_w+floppy_bay_gap)/2 - opening_w/2,
+                    floppy_bulkhead_y0 - 1, opening_z0])
+            cube([opening_w, floppy_bulkhead_t + 2, opening_h]);
+}
+
+module main_floppy_bay_brackets() {
+    // Rail fins hanging from the tower's own ceiling, one on each side of
+    // each bay position, per direction ("brackets that hang from the top").
+    // Kept entirely within Y <= floppy_notch_y0 (i.e. the portion of the
+    // notch that's still genuinely under solid roof) so the rail's own top
+    // has real material to fuse into -- past that Y the roof is already
+    // open, so a rail there would just be floating.
+    // Mounting pilot holes sit at the real drive's own front-bezel-relative
+    // offsets (floppy_screw_front_offsets) -- NOT rescaled to the rail's
+    // own length -- so a real drive's screw holes still line up; a hole
+    // that doesn't fit within the available rail length is simply omitted
+    // rather than compressed to fit.
+    //
+    // No full-length rail at all now, per direction ("not have the whole
+    // bracket going back to front, but instead an inch-wide band covering
+    // the front and back holes"): just two standalone ~1in (25.4mm) wide
+    // bands, one centered on each real screw location, each reaching all
+    // the way to the actual roof (rear_tower_h-wall) for a genuine upside-
+    // down-printable connection. Every band is clamped to stay behind the
+    // bulkhead's own back edge, so it's hidden inside the tunnel and never
+    // pokes out past the bulkhead's face. Each gets a small fillet flaring
+    // out into the roof (per direction, "a little cross brace or fillet
+    // for strength") -- since there's no longer a connecting rail bracing
+    // them along their length, that roof joint is the one place all their
+    // load concentrates, so it gets the reinforcement instead of the base.
+    true_ceiling_z = rear_tower_h - wall;
+    band_half_w = 12.7; // 1in (25.4mm) total width
+    fillet_h = 6; // height of the flare into the roof
+    fillet_grow = 2; // extra half-width gained at the very top
+    for (i = [-1, 1]) {
+        bay_cx = board_w/2 + i*(floppy_w+floppy_bay_gap)/2;
+        for (side = [-1, 1]) {
+            rail_x = bay_cx + side*(floppy_w/2 + floppy_fit_clear/2 + floppy_rail_t/2);
+            difference() {
+                union() {
+                    for (off = floppy_screw_front_offsets) {
+                        screw_y = floppy_notch_y0 - off;
+                        band_y0 = max(screw_y - band_half_w, floppy_rail_y0);
+                        band_y1 = min(screw_y + band_half_w, floppy_notch_y0 - floppy_bulkhead_t - 1);
+                        if (band_y1 - band_y0 > 4) {
+                            translate([rail_x - floppy_rail_t/2, band_y0, bay_face_z0])
+                                cube([floppy_rail_t, band_y1 - band_y0, true_ceiling_z - fillet_h - bay_face_z0]);
+                            // fillet: flares outward in Y (toward the band's own
+                            // ends) as it rises into the last few mm below the
+                            // roof, widening the bonded area there
+                            band_yc = (band_y0 + band_y1) / 2;
+                            band_hw = (band_y1 - band_y0) / 2;
+                            hull() {
+                                translate([rail_x - floppy_rail_t/2, band_y0, true_ceiling_z - fillet_h])
+                                    cube([floppy_rail_t, band_y1 - band_y0, 0.01]);
+                                translate([rail_x - floppy_rail_t/2, band_yc - band_hw - fillet_grow, true_ceiling_z])
+                                    cube([floppy_rail_t, (band_hw + fillet_grow)*2, 0.01]);
+                            }
+                        }
+                    }
+                }
+                for (off = floppy_screw_front_offsets)
+                    if (floppy_notch_y0 - off > floppy_rail_y0 + 2)
+                        translate([rail_x - floppy_rail_t/2 - 1, floppy_notch_y0 - off, bay_face_z0 + floppy_screw_z_offset])
+                            rotate([0,90,0])
+                                cylinder(d = m3_pilot_d, h = floppy_rail_t + 2);
+            }
+        }
+    }
 }
 
 module main_standoffs_solid() {
@@ -854,16 +1325,28 @@ rear_rib_w = 2.4;
 rear_rib_depth = 5;
 function rear_rib_x(refdes) = [for (c = board_connectors) if (c[0]==refdes) c[1]][0];
 rear_rib_positions = [
-    (rear_rib_x("SW1") + rear_rib_x("JK1")) / 2,
+    (rear_rib_x("SW1") + rear_rib_x("JK1")) / 2 + 2, // +2: per direction, "the rib to the
+        // left of JK1 needs to be 2mm further to the left" (+X = left, per this file's
+        // own convention) -- the only rib between SW1 and JK1, i.e. the one immediately
+        // left of JK1
     (rear_rib_x("JK2") + rear_rib_x("JK3")) / 2,
     (rear_rib_x("JK4") + rear_rib_x("J5A")) / 2, // "other side of JK4" from JK3
     (rear_rib_x("J5A") + rear_rib_x("J5B")) / 2, // between video and sound
 ];
+rib_wall_bump_h = 1.6; // per direction: "where it intersects the wall... 1.6mm higher,
+                         // for a distance of 1mm from the wall only. for the rest I want
+                         // it to be the same height it currently is" -- applies to every
+                         // rib (main_rear_support_ribs() below and main_cn4_rib()'s own
+                         // wall-to-wall low segment)
+rib_wall_bump_run = 1;
 module main_rear_support_ribs() {
     inner_wall_y = -(rear_margin - wall);
-    for (x = rear_rib_positions)
+    for (x = rear_rib_positions) {
         translate([x - rear_rib_w/2, inner_wall_y, 0])
             cube([rear_rib_w, rear_rib_depth, standoff_height]);
+        translate([x - rear_rib_w/2, inner_wall_y, standoff_height])
+            cube([rear_rib_w, rib_wall_bump_run, rib_wall_bump_h]);
+    }
 }
 
 // CN2's real position, confirmed from coco3.step (kept as a reference
@@ -935,6 +1418,12 @@ module main_cn4_rib() {
         translate([raceway_x - raceway_w/2 - 0.5, rib_y - rear_rib_w/2 - 1, -1])
             cube([raceway_w + 1, rear_rib_w + 2, cn4_rib_low_h + 2]);
     }
+    // 1.6mm bump for the last 1mm where this low, wall-to-wall segment
+    // meets each side wall -- same rib_wall_bump_h/run as the rear ribs.
+    translate([right_wall_x, rib_y - rear_rib_w/2, cn4_rib_low_h])
+        cube([rib_wall_bump_run, rear_rib_w, rib_wall_bump_h]);
+    translate([left_wall_x - rib_wall_bump_run, rib_y - rear_rib_w/2, cn4_rib_low_h])
+        cube([rib_wall_bump_run, rear_rib_w, rib_wall_bump_h]);
     // Per direction: this rib is short and completely freestanding -- never
     // part of the main support beam, no wall nearby to brace against --
     // so one angled gusset at its middle, tapering down to the open floor
@@ -965,7 +1454,7 @@ module main_cn4_rib() {
 // holes (some closer to local Y=0 than the Pico is) past the wall entirely.
 main_kbpcb_origin = [board_w/2 - pico_pos[0], 65];
 kbpcb_screw_boss_d = 7;
-kbpcb_screw_pilot_d = 2.6; // self-tap pilot for the board's 3.2mm holes
+kbpcb_screw_pilot_d = m3_pilot_d; // self-tap/heat-set pilot for the board's 3.2mm holes
 kbpcb_screw_boss_h = 3; // flush/low-profile -- was 10 (a tall freestanding
                          // pillar); per direction, these sit low to the
                          // floor instead. Still tall enough for a couple mm
@@ -1244,7 +1733,7 @@ module main_cn3_access_cut() {
     // 42x42 opening the rest of the way up to standoff_height.
     xy = cn3_xy();
     translate([xy[0] - cn3_open/2 - cn3_step_extra+8, xy[1] - cn3_open/2 - cn3_step_extra, -1])
-        cube([cn3_open + 2*cn3_step_extra-10, cn3_open + 2*cn3_step_extra-6, cn3_step_h + 1]);
+        cube([cn3_open + 2*cn3_step_extra-8, cn3_open + 2*cn3_step_extra-6, cn3_step_h + 1]);
     translate([xy[0] - cn3_open/2 + 4, xy[1] - cn3_open/2, cn3_step_h])
         cube([cn3_open-4, cn3_open-8, standoff_height - cn3_step_h + 1]);
 }
@@ -1280,15 +1769,24 @@ cn3_pedestal_right_recede = 15; // pedestal's right face, in from the collar's o
 cn3_pedestal_back_recede  = 13; // pedestal's back face, in from the collar's own back face
 function main_cn3_pedestal_xy0() = [ // outer box min (right/back) corner
     cn3_xy()[0] - cn3_open/2 - cn3_collar_t + cn3_pedestal_right_recede,
-    cn3_xy()[1] - cn3_open/2 - cn3_collar_t + cn3_pedestal_back_recede
+    cn3_xy()[1] - cn3_open/2 - cn3_collar_t + cn3_pedestal_back_recede + 2.5
 ];
 module main_cn3_shelf() {
     xy = cn3_xy();
     p0 = main_cn3_pedestal_xy0();
     x0 = p0[0]; y0 = p0[1];
+    // Height was cn3_wall_min starting at cn3_pedestal_base_h-0.24, so its
+    // own top landed at cn3_pedestal_base_h+cn3_wall_min-0.24 -- 0.24mm
+    // SHORT of main_cn3_pedestal()'s own base (cn3_pedestal_base_h+
+    // cn3_wall_min). A real gap there, just masked by main_cn3_new_
+    // standoff() happening to bridge it at its old position -- exposed
+    // once that standoff moved (per direction, disconnected pedestal
+    // walls). Height increased by 0.5 (the original 0.24 short-fall plus a
+    // small deliberate overlap) so the shelf genuinely reaches past the
+    // pedestal's own base now, not just up to it.
     difference() {
-        translate([xy[0] - cn3_open/2+4, xy[1] - cn3_open/2, cn3_pedestal_base_h])
-            cube([cn3_open-4, cn3_open-3, cn3_wall_min]);
+        translate([xy[0] - cn3_open/2+4, xy[1] - cn3_open/2-2, cn3_pedestal_base_h-0.24])
+            cube([cn3_open-2, cn3_open-1, cn3_wall_min+0.5]);
         translate([x0 + cn3_wall_min, y0 + cn3_wall_min, cn3_pedestal_base_h - 1])
             cube([cn3_pedestal_w - 2*cn3_wall_min, cn3_pedestal_d - 2*cn3_wall_min, cn3_wall_min + 2]);
     }
@@ -1309,8 +1807,8 @@ module main_cn3_pedestal() {
 
 // New attachment point "in that corner" (per direction) -- reverted back
 // to its original size/position (7.5mm OD) along with the pedestal above.
-cn3_new_standoff_hole_d = 3.5;
-function cn3_new_standoff_xy() = [cn3_xy()[0] - cn3_open/2 + 8, cn3_xy()[1] + cn3_open/2 - 7];
+cn3_new_standoff_hole_d = m3_pilot_d;
+function cn3_new_standoff_xy() = [cn3_xy()[0] - cn3_open/2 + 8, cn3_xy()[1] + cn3_open/2 - 9];
 module main_cn3_new_standoff() {
     p = cn3_new_standoff_xy();
     translate([0, 0, cn3_pedestal_base_h])
@@ -1445,9 +1943,14 @@ module main_magnet_pockets() {
 // edge, 3 along the front edge, inset 25mm from the rim so they clear the
 // connector notches, which cut 18mm deep into the same wall); fit-check and
 // retune like the other first-pass joints in this file (lip/socket, magnets).
-main_topbottom_screw_xy = [
-    for (fx = [0.15, 0.5, 0.85]) [board_w*fx, 25]
-]; //rear-side row only, unioned with the front-side row below
+// Removed per direction ("three standoffs in the middle... don't think
+// these standoffs do anything, so they can go away") -- these were a
+// rear-side row of three fastening bosses (X = board_w*[0.15,0.5,0.85],
+// Y=25), mirrored to a front-side row that main_screw_pos_conflicts_bay()
+// below was already filtering out entirely (all three X positions land
+// inside the floppy bay's own footprint). Only the 4 corner bosses
+// (main_topbottom_screw_corners) remain.
+main_topbottom_screw_xy = [];
 // 4 more, right in the extreme corners -- per direction, so there's a
 // solid top/bottom connection point right at each corner too, not just
 // along the rear/front edges. Measured from the case's own TRUE corners
@@ -1464,11 +1967,24 @@ main_topbottom_screw_corners = [
                 main_front_y - main_topbottom_screw_corner_inset])
         [cx, cy]
 ];
-main_topbottom_screw_positions = concat(
+// The front-side row (Y ~= main_depth-25) lands right inside the floppy
+// bay's own footprint for X=42/140/238 -- a screw boss there would get
+// sliced by the bay notch/bulkhead cut (caught as disconnected STL
+// fragments). There's no structural point fastening top-to-bottom through
+// what's now an open bay compartment anyway, so those positions are
+// dropped rather than relocated.
+function main_screw_pos_conflicts_bay(p) =
+    (p[0] > board_w/2 - floppy_face_w/2 - floppy_duct_wall_t - 5)
+    && (p[0] < board_w/2 + floppy_face_w/2 + floppy_duct_wall_t + 5)
+    && (p[1] > floppy_bulkhead_y0 - 5);
+main_topbottom_screw_positions_raw = concat(
     main_topbottom_screw_xy,
     [ for (p = main_topbottom_screw_xy) [p[0], main_depth - 25] ], // mirrored to the front-side row
     main_topbottom_screw_corners
 );
+main_topbottom_screw_positions = [
+    for (p = main_topbottom_screw_positions_raw) if (!main_screw_pos_conflicts_bay(p)) p
+];
 
 module main_topbottom_screw_boss_top() {
     // Each boss spans the FULL available height at its own Y, from the
@@ -1476,22 +1992,91 @@ module main_topbottom_screw_boss_top() {
     // varies with Y across the wedge/ramp) -- a boss that doesn't actually
     // reach the roof is structurally disconnected from the shell (this bit
     // us once already: floating pegs with no roof contact).
+    //
+    // Slanted-top boss, following the wedge's own local slope instead of a
+    // single flat height evaluated at the boss's own center Y -- the
+    // front-corner bosses sit deep in the steep ramp (main_front_y - 6),
+    // where the roof height changes by well over a boss-diameter's worth
+    // across just the boss's own 8mm footprint; a flat top there always
+    // overshot the actual (lower, closer to the front) roof on the boss's
+    // front-facing side, poking out past it (per direction, "protruding
+    // slightly from the front").
+    //
+    // Tried intersecting a tall cylinder with the real wedge geometry
+    // (y_wedge_block) first -- geometrically correct, but produced
+    // degenerate sliver fragments right at the front corners regardless of
+    // wedge X-range or cylinder tessellation: a CGAL boolean robustness
+    // issue against that mesh's own hull()-based construction, not
+    // something fixable by nudging parameters. Sidestepped entirely by not
+    // doing a mesh intersection at all -- local_wedge_h() is a pure
+    // algebraic function (no geometry, no tessellation to collide with),
+    // so hull()ing the boss's own bottom disk against a ring of points
+    // sampled around its top rim (each at that exact point's own
+    // local_wedge_h() height) gives the same correctly-slanted shape with
+    // no mesh-on-mesh interaction to go wrong.
+    boss_d = 8;
+    boss_r = boss_d/2;
+    rim_n = 16;
+    pilot_depth = 12; // fixed screw-purchase depth (plenty for an M3 self-tap) -- not the
+                        // full boss height; keeps the pilot hole well clear of the sloped
+                        // top so it can't pinch the remaining wall down to nothing there
     for (p = main_topbottom_screw_positions) {
-        boss_h = local_wedge_h(p[1], rear_tower_h, front_deck_h) - wall - parting_h;
-        translate([p[0], p[1], parting_h])
-            difference() {
-                cylinder(d = 8, h = boss_h);
-                translate([0,0,-1]) cylinder(d = 2.8, h = boss_h + 2); // self-tap pilot, M3-ish
+        difference() {
+            hull() {
+                translate([p[0], p[1], parting_h]) cylinder(d = boss_d, h = 0.01);
+                for (i = [0:rim_n-1]) {
+                    theta = i*360/rim_n;
+                    rim_x = p[0] + boss_r*cos(theta);
+                    rim_y = p[1] + boss_r*sin(theta);
+                    rim_z = local_wedge_h(rim_y, rear_tower_h - wall, front_deck_h - wall);
+                    translate([rim_x, rim_y, rim_z]) sphere(r = 0.6);
+                }
             }
+            translate([p[0], p[1], parting_h - 1]) cylinder(d = m3_pilot_d, h = pilot_depth + 1); // self-tap/heat-set pilot
+        }
     }
 }
-module main_topbottom_screw_clearance_bottom() {
-    for (p = main_topbottom_screw_positions)
+// Per direction: replaces the earlier countersink (didn't print well in
+// PLA) with a raised, wide boss instead -- standing up to the same height
+// as the real board standoffs, with a wide head-clearance pocket on the
+// underside (where the screw is actually inserted from) and a narrow
+// shaft clearance continuing up from there, inside solid material the
+// whole way, for real strength. Braced to the nearest side wall the same
+// way the real board standoffs already are (main_standoffs_braces()) --
+// all 4 positions are corner-inset, close to a side wall.
+topbottom_boss_od = 10;
+topbottom_boss_shaft_d = 3.6; // M3 clearance -- the screw passes through freely here,
+                                // it only THREADS into the top shell's own boss above
+topbottom_boss_head_d = 7;    // M3 pan/socket head clearance
+topbottom_boss_head_h = 8;    // how tall the head pocket is, on the UNDERSIDE of the boss
+module main_topbottom_screw_boss_bottom_solid() {
+    right_inner_x = -(case_margin - wall);
+    left_inner_x  = board_w + (case_margin - wall);
+    for (p = main_topbottom_screw_positions) {
+        translate([p[0], p[1], 0]) cylinder(d = topbottom_boss_od, h = standoff_height);
+        cross_brace_wedge_x(p[0] < board_w/2 ? right_inner_x : left_inner_x, p[0], p[1], standoff_brace_w, standoff_height);
+    }
+}
+module main_topbottom_screw_boss_bottom_holes() {
+    // Cut separately from the boss's own solid, and LAST (see
+    // main_case_bottom()) -- same reason main_standoffs_holes() already
+    // is: this boss gets unioned together with the rest of the floor, and
+    // a hole baked into the boss's own self-contained geometry before that
+    // union would just get silently filled back in by the (un-holed) floor
+    // solid underneath it wherever the two overlap. Caught per direction
+    // ("can't see any hole in the bottom of those standoffs").
+    //
+    // Wide head-clearance pocket on the UNDERSIDE (where the screw is
+    // actually inserted from outside), narrowing to the shaft clearance
+    // as it continues up toward the top shell -- per direction ("I expect
+    // the wider hole to be on the underside to accommodate the screw
+    // head"); had this inverted the first time.
+    for (p = main_topbottom_screw_positions) {
         translate([p[0], p[1], -1])
-            union() {
-                cylinder(d = 3.6, h = new_floor_t + 2);  // shaft clearance through the floor
-                cylinder(d = 7, h = 3);                  // countersink for the screw head
-            }
+            cylinder(d = topbottom_boss_head_d, h = topbottom_boss_head_h + 1);
+        translate([p[0], p[1], topbottom_boss_head_h])
+            cylinder(d = topbottom_boss_shaft_d, h = standoff_height - topbottom_boss_head_h + 1);
+    }
 }
 
 module main_case_bottom() {
@@ -1521,11 +2106,15 @@ module main_case_bottom() {
                 main_cn4_rib();
                 main_kbpcb_mount();
                 main_usbc_trigger_standoffs_solid();
+                main_topbottom_screw_boss_bottom_solid(); // must be IN this union, not added
+                    // later alongside main_cable_raceway() etc. -- the holes below are cut
+                    // from this same union, so the boss needs to already be part of it or
+                    // the cut has nothing here yet to remove (this was the actual bug: the
+                    // solid, added afterward, just plugged the floor's own hole from above)
                 if (!keyboard_attached) main_magnet_pads();
                 if (!keyboard_attached && lip_socket_tabs_enabled) main_lip_socket();
             }
             main_usb_passthrough_front();
-            main_topbottom_screw_clearance_bottom();
             main_cn3_access_cut();
             main_cable_raceway_end_cuts();
             main_cable_raceway_floor_cut();
@@ -1536,6 +2125,7 @@ module main_case_bottom() {
                                      // which overlaps a couple of these) can silently
                                      // fill a pilot hole back in
             main_usbc_trigger_standoffs_holes(); // same reason, cut last
+            main_topbottom_screw_boss_bottom_holes(); // same reason, cut last
             main_floor_vents();
             if (!keyboard_attached) main_magnet_pockets();
         }
@@ -1555,16 +2145,40 @@ module main_case_bottom() {
 }
 
 module main_case_top() {
+    // main_pizero_hdmi_mount() is deliberately NOT included here -- it's
+    // reference-only pins (see its own comment), never checked against the
+    // rear-panel connector notches, and at least one pin in the current
+    // pattern lands squarely inside the JK3 notch with nothing to attach
+    // to -- a genuinely floating, disconnected fragment (caught by the STL
+    // connectivity checker). Shown in "preview" only (see PART SELECTOR)
+    // until the Pi Zero / HDMI mount gets a real designed location; keeping
+    // it out of every printable top-shell part means nothing ships with a
+    // piece that'll just snap off or get dropped by the slicer.
     union() {
         difference() {
             union() {
-                difference() { main_top_outer_solid(); main_top_inner_cavity(); }
+                difference() {
+                    main_top_outer_solid();
+                    // main_floppy_bay_duct_protect() shields its footprint from this
+                    // cut, so the outer solid's own natural material stays in place
+                    // there as the bay duct's walls -- see that module's own comment.
+                    difference() { main_top_inner_cavity(); main_floppy_bay_duct_protect(); }
+                }
                 main_topbottom_screw_boss_top();
             }
             main_louvers();
             main_connector_cutouts_top();
+            main_floppy_bay_notch();
         }
-        main_pizero_hdmi_mount(); // bosses only (additive); shown for reference/preview
+        // Bulkhead and brackets added OUTSIDE the difference() above -- same
+        // reasoning as main_cable_raceway() in main_case_bottom(): they're
+        // built to already avoid the notch on their own, so nothing
+        // upstream should be able to carve them back out.
+        difference() {
+            main_floppy_bay_bulkhead_solid();
+            main_floppy_bay_bulkhead_holes();
+        }
+        main_floppy_bay_brackets();
     }
 }
 
@@ -1606,13 +2220,26 @@ module main_case_bottom_right() {
                 rotate([0,90,0]) cylinder(d=6.4, h=10);
     }
 }
+// Split-line alignment pins were centered at a fixed Z midpoint between
+// parting_h and rear_tower_h -- fine back when rear_tower_h was ~62, but
+// with the tower now much taller (bay-stack-driven), that midpoint lands
+// deep in the hollow interior, nowhere near the roof (the only solid
+// material at X=main_split_x, dead center of the case, far from every
+// wall). Caught as a disconnected pin fragment. Fixed the same way the
+// BOTTOM shell's own split pins already were once (root to whatever's
+// reliably solid) -- here that's the roof, at its own LOCAL height
+// (local_wedge_h(), not a flat rear_tower_h assumption -- the second pin,
+// at yy=main_depth-30, sits past main_break1_y in the sloped ramp, where
+// the roof is already lower than rear_tower_h), embedded 1mm up into its
+// solid thickness for a genuine overlap, not just a touch.
+function main_pin_z(yy) = local_wedge_h(yy, rear_tower_h, front_deck_h) - wall - 1;
 module main_case_top_left() {
     intersection() {
         main_case_top();
         translate([-500,-500,-500]) cube([main_split_x+500, 2000, 2000]);
     }
     for (yy = [30, main_depth-30])
-        translate([main_split_x, yy, parting_h + (rear_tower_h-parting_h)/2])
+        translate([main_split_x, yy, main_pin_z(yy)])
             rotate([0,90,0]) cylinder(d=6, h=8);
 }
 module main_case_top_right() {
@@ -1622,7 +2249,7 @@ module main_case_top_right() {
             translate([main_split_x,-500,-500]) cube([2000, 2000, 2000]);
         }
         for (yy = [30, main_depth-30])
-            translate([main_split_x, yy, parting_h + (rear_tower_h-parting_h)/2])
+            translate([main_split_x, yy, main_pin_z(yy)])
                 rotate([0,90,0]) cylinder(d=6.4, h=10);
     }
 }
@@ -1817,6 +2444,9 @@ if (part == "preview") {
     color("LightSteelBlue")
         translate([0, 0, preview_explode_z])
             main_case_top();
+    color("Orange")
+        translate([0, 0, preview_explode_z])
+            main_pizero_hdmi_mount(); // reference only -- see main_case_top()'s own comment
     orientation_labels();
     if (!keyboard_attached)
         color("DimGray")
