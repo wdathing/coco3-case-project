@@ -743,14 +743,26 @@ module main_louvers() {
     r = edge_fillet_r; // matches the top-edge rounding radius exactly, so the
                          // corner sweep below follows the SAME arc as the case's
                          // own rounded edge -- true continuity, not an approximation
-    side_vent_z0 = max(41.85 + 2, parting_h + 6);
+    side_vent_z0_base = max(41.85 + 2, parting_h + 6);
+    // min-X wall also carries the CN1 cart slot (a much taller cutout than
+    // the rear connector notches, per direction it's now 108x23 real size
+    // + margin) -- side_vent_z0_base only cleared the REAR connectors'
+    // height, not this. The vertical grooves' own bottom end was starting
+    // BELOW the cart slot's own top, cutting straight through/into ground
+    // the cart slot already opened up -- unprintable per direction ("the
+    // vent cuts on the right just go all the way to the cart cutout").
+    // Raised 8mm clear of the cart slot's own top, min-X wall only; max-X
+    // (no cart slot) keeps the lower, unrestricted floor.
+    cart_slot_top_z = parting_h + cart_slot_h + cart_slot_margin_h;
+    min_x_vent_z0 = max(side_vent_z0_base, cart_slot_top_z + 8);
+    max_x_vent_z0 = side_vent_z0_base;
     side_vent_z1 = rear_tower_h - r; // stop right where the corner arc begins
     top_x0 = min_x + r; // where the top groove begins, past the left corner arc
     top_x1 = max_x - r; // where the top groove ends, before the right corner arc
 
     for (y = groove_ys) {
-        groove_vertical_side(min_x, 1, y, side_vent_z0, side_vent_z1, louver_depth*4);
-        groove_vertical_side(max_x, -1, y, side_vent_z0, side_vent_z1, louver_depth*4);
+        groove_vertical_side(min_x, 1, y, min_x_vent_z0, side_vent_z1, louver_depth*4);
+        groove_vertical_side(max_x, -1, y, max_x_vent_z0, side_vent_z1, louver_depth*4);
         groove_corner_sweep(min_x + r, rear_tower_h - r, r, 180, 90, y);
         groove_corner_sweep(max_x - r, rear_tower_h - r, r, 0, 90, y);
         groove_horizontal_top(rear_tower_h, y, top_x0, top_x1);
@@ -2393,7 +2405,7 @@ module kb_case_bottom_right() {
 //   "keyboard_bottom_left" -- printable piece (only if keyboard_attached=false)
 //   "keyboard_bottom_right"-- printable piece
 //   "keyboard_bottom_whole"
-part = "main_bottom_whole";
+part = "main_top_whole";
 
 // exploded gap between the bottom tray and top shell in "preview" only, so
 // the parting line and connector notches are visible; they sit flush (no
