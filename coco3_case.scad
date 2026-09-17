@@ -55,18 +55,13 @@ tol             = 0.25;   // general fit clearance
 // Standard pilot hole for every M3 screw post/boss THAT THREADS DIRECTLY
 // INTO PRINTED PLASTIC throughout the project (board standoffs' own real
 // mounting-hole sizes are fixed by the physical PCBs and excluded -- this
-// is only for posts this design itself owns) -- per direction, sized to
-// work with EITHER an M3 self-tapping screw OR an M3 heat-set brass
-// insert in the same printed hole. Pure self-tap alone wants ~2.5-2.8mm
-// for the best thread bite; heat-set inserts are commonly speced for a
-// ~4.0-4.2mm hole. There's no single size that's ideal for both -- 3.2mm
-// is a middle-ground compromise (a heat-set insert's own installation
-// heat still melts/compresses the surrounding PLA enough for a solid fit
-// starting from this size, while a self-tap screw still gets real thread
-// engagement, just looser than a dedicated self-tap-only pilot would
-// give). Flagged like the file's other placeholder dimensions -- true up
-// against the specific insert/screw you actually use.
-m3_pilot_d      = 3.2;
+// is only for posts this design itself owns). Per direction, all screws
+// are now M3 self-tapping only -- no more heat-set insert provision, so
+// this no longer needs to split the difference with a ~4.0-4.2mm
+// heat-set-sized hole. 2.5mm is the standard self-tap pilot for good
+// thread bite into PLA; still flagged like the file's other placeholder
+// dimensions -- true up against the specific screws you actually use.
+m3_pilot_d      = 2.5;
 $fn             = 48;     // circle resolution (raise for final render, lower for fast preview)
 
 /* [Keyboard attachment mode] */
@@ -443,7 +438,16 @@ floppy_d            = 120;   // real drive depth -- per direction, the specific 
                                // full-depth 3.5" FDD; the tower now has ~137mm of
                                // available depth behind the bay face (see
                                // main_floppy_bay_brackets()), comfortably enough.
-floppy_fit_clear    = 3;     // added to the through-opening so a real drive slides in
+// Per-axis clearance added to the through-opening. A real print came back
+// "about 3mm too wide and 2mm too tall" against the actual drive, so this
+// replaces the old single floppy_fit_clear=3 (applied to both axes) --
+// width clearance is now essentially zero (0.3mm, not a hard zero, so
+// there's still SOME slip fit rather than a knife-edge tolerance) and
+// height barely more than a friction fit. Worth confirming against the
+// physical drive before committing another full print -- FDM holes often
+// print a touch undersized, so this may still need easing.
+floppy_fit_clear_w = 0.3;
+floppy_fit_clear_h = 1.3;
 floppy_bay_gap      = 20;    // divider width between the two bays -- widened from 10
                                // per direction ("a bit more separation between the bays")
 floppy_bay_margin   = 20;    // decorative surround margin around the bay PAIR, LEFT/RIGHT only
@@ -455,13 +459,19 @@ floppy_face_w = 2*floppy_w + floppy_bay_gap + 2*floppy_bay_margin;
 floppy_face_h = floppy_h + 2*floppy_bay_margin_v;
 
 // Standard 3.5" drive side-mounting screw positions, measured from the
-// drive's own FRONT bezel plane -- PLACEHOLDER, not yet checked against a
-// real drive's datasheet. Kept as real-world offsets from the front (NOT
-// rescaled to the bay's own shorter recess) per direction, so a real
-// drive's screw holes still line up even though the bracket rails
-// themselves are truncated short of the full drive depth.
-floppy_screw_front_offsets = [12, 92]; // two mounting points along the drive's depth
-floppy_screw_z_offset      = 6.5;       // up from the drive's own bottom edge
+// drive's own FRONT bezel plane. REAL measurements off the user's own
+// Gotek (front edge of each hole, per spec): 20mm and 79.2mm -- those are
+// to the NEAR edge of the hole, not its center, so the screw-hole radius
+// is added to get the true center offset used below. (Previous [12, 92]
+// values were unverified placeholders and measured ~13-14mm off in
+// practice -- confirmed by a real print: the drive stuck out that much
+// when mounted through these holes.)
+floppy_screw_front_offsets = [20 + m3_pilot_d/2, 79.2 + m3_pilot_d/2];
+// Z height of the screw holes, up from the drive's own bottom edge. The
+// generic 3.5"/floppy spec position is 12.7mm; the user's particular
+// Gotek unit instead has its holes at 4.2mm. Drilling both lets either
+// mount without forcing a specific drive.
+floppy_screw_z_offsets = [4.2, 12.7];
 
 // ---- Tower height, driven by the bay stack (not picked by hand) ----
 bay_face_z0  = parting_h + 6 + 19.05;    // footer below the recessed face -- includes an
@@ -827,7 +837,10 @@ usbc_power_x = 20;
 // (buttons, LEDs, output pads) lives on the board itself. First-pass
 // generic dimensions -- common small USB-C PD trigger boards run around
 // 22x22mm -- true up once you've picked the real part.
-usbc_trigger_x        = 272;
+usbc_trigger_x        = 264; // moved 8mm right (was 272) -- the left-rear topbottom screw
+                               // boss was nudged further in (see main_topbottom_screw_rf_inset)
+                               // and its 10mm footprint now reaches to X~279, which the
+                               // board's old position (span 261-283) overlapped
 usbc_trigger_cut_w     = 14; // rear cutout for the USB-C port + cable clearance
 usbc_trigger_cut_h     = 7;
 usbc_trigger_cut_z     = 6;  // cutout vertical center above the floor
@@ -870,16 +883,30 @@ module main_usbc_trigger_standoffs_holes() {
 // at the panel face to help guide the cartridge in.
 cart_slot_w           = 108;
 cart_slot_h           = 23;
-cart_slot_margin_w    = 4;  // total width clearance (both sides combined)
+cart_slot_margin_w    = 2;  // total width clearance (both sides combined) -- halved from 4
+                             // per direction ("the cart slot is too wide"); no exact target
+                             // given, so this is a first cut -- re-check fit against the
+                             // real cartridge before the next print
 cart_slot_margin_h    = 3;  // total height clearance
 cart_slot_taper       = 10; // lead-in funnel depth at the panel's outer face
 cart_slot_taper_grow  = 6;  // how much wider the funnel is right at the surface (total)
+
+// CN3's real pad position (X=18.21, from board_connectors) sits right in
+// the same right-rear corner as CN1/the cart slot -- per direction, "the
+// rightmost rear cutout... completely blocked by the cart slot." CN3
+// already needs a cable/pigtail to reach the rear panel at all (it's
+// bottom-mounted on the real board), so its CUTOUT position doesn't need
+// to match the pad -- only main_cn3_shelf()/pedestal (which stay on the
+// real pad location) do. Relocated here to the left of SW1 (X=232.22),
+// clear of both SW1's own notch and the cart slot.
+cn3_cutout_x = 255;
 
 module main_connector_cutouts_top() {
     notch_depth = case_margin*3;
     notch_r = 2; // per direction, "round them off a bit" -- except SW3, kept sharp/square
     for (c = board_connectors) {
-        refdes = c[0]; x = c[1]; y = c[2]; kind = c[5];
+        refdes = c[0]; x_real = c[1]; y = c[2]; kind = c[5];
+        x = (refdes == "CN3") ? cn3_cutout_x : x_real;
         if (kind == "din6" || kind == "din4" || kind == "din5" || kind == "rgb_din8")
             rim_notch_y(x, -rear_margin, 15.9, 20, notch_depth, notch_r);
         else if (kind == "rca")
@@ -1025,6 +1052,25 @@ module main_floppy_bay_duct_protect() {
         floppy_notch_corner_r + floppy_duct_wall_t);
 }
 
+// Per direction: printing this upside-down, the space between the
+// bulkhead's own ceiling and the actual roof (right above the bay, over
+// the bulkhead's own Y-span where the wedge roof is still taller than the
+// bulkhead) was left hollow by the general inner-cavity cut -- an
+// unsupported horizontal span there needed print support. Since a real
+// drive's screw loads land on the brackets right next to this same area,
+// filling it in solid is a straight win (per direction: "saving time,
+// material and adding strength" vs support material). Same shield
+// technique as main_floppy_bay_duct_protect() above -- this only ever
+// keeps material that's already within the case's own natural silhouette,
+// so it can't protrude.
+module main_floppy_bay_roof_fill_protect() {
+    rounded_rect_prism_y(
+        board_w/2 - floppy_face_w/2 - floppy_duct_wall_t, board_w/2 + floppy_face_w/2 + floppy_duct_wall_t,
+        bay_face_z0 + floppy_face_h, rear_tower_h + 5,
+        floppy_bulkhead_y0, floppy_notch_y0,
+        floppy_notch_corner_r + floppy_duct_wall_t);
+}
+
 // The bulkhead plate is a genuinely ADDED solid (it has to be -- the notch
 // already cut straight through whatever was there, including the front
 // wall itself), so it's held to the same no-protrusion rule by
@@ -1049,9 +1095,9 @@ module main_floppy_bay_bulkhead_solid() {
 module main_floppy_bay_bulkhead_holes() {
     // The two actual drive-sized openings -- per direction, cut through
     // the bulkhead specifically, not the whole notch.
-    opening_w = floppy_w + floppy_fit_clear;
-    opening_h = floppy_h + floppy_fit_clear;
-    opening_z0 = bay_face_z0 + floppy_bay_margin_v - floppy_fit_clear/2;
+    opening_w = floppy_w + floppy_fit_clear_w;
+    opening_h = floppy_h + floppy_fit_clear_h;
+    opening_z0 = bay_face_z0 + floppy_bay_margin_v - floppy_fit_clear_h/2;
     for (i = [-1, 1])
         translate([board_w/2 + i*(floppy_w+floppy_bay_gap)/2 - opening_w/2,
                     floppy_bulkhead_y0 - 1, opening_z0])
@@ -1076,27 +1122,33 @@ module main_floppy_bay_brackets() {
     // the front and back holes"): just two standalone ~1in (25.4mm) wide
     // bands, one centered on each real screw location, each reaching all
     // the way to the actual roof (rear_tower_h-wall) for a genuine upside-
-    // down-printable connection. Every band is clamped to stay behind the
-    // bulkhead's own back edge, so it's hidden inside the tunnel and never
-    // pokes out past the bulkhead's face. Each gets a small fillet flaring
-    // out into the roof (per direction, "a little cross brace or fillet
-    // for strength") -- since there's no longer a connecting rail bracing
-    // them along their length, that roof joint is the one place all their
-    // load concentrates, so it gets the reinforcement instead of the base.
+    // down-printable connection. Each gets a small fillet flaring out into
+    // the roof (per direction, "a little cross brace or fillet for
+    // strength") -- since there's no longer a connecting rail bracing them
+    // along their length, that roof joint is one place their load
+    // concentrates. The FORWARD band (smallest front-offset, nearest the
+    // bulkhead) also gets fused directly to the bulkhead's own back face
+    // instead of stopping short of it with an air gap -- per direction, a
+    // missed opportunity to tie it into the one other solid wall right
+    // there, not just the roof.
     true_ceiling_z = rear_tower_h - wall;
     band_half_w = 12.7; // 1in (25.4mm) total width
     fillet_h = 6; // height of the flare into the roof
     fillet_grow = 2; // extra half-width gained at the very top
+    bulkhead_back_y = floppy_notch_y0 - floppy_bulkhead_t;
+    forward_off = min(floppy_screw_front_offsets);
     for (i = [-1, 1]) {
         bay_cx = board_w/2 + i*(floppy_w+floppy_bay_gap)/2;
         for (side = [-1, 1]) {
-            rail_x = bay_cx + side*(floppy_w/2 + floppy_fit_clear/2 + floppy_rail_t/2);
+            rail_x = bay_cx + side*(floppy_w/2 + floppy_fit_clear_w/2 + floppy_rail_t/2);
             difference() {
                 union() {
                     for (off = floppy_screw_front_offsets) {
                         screw_y = floppy_notch_y0 - off;
                         band_y0 = max(screw_y - band_half_w, floppy_rail_y0);
-                        band_y1 = min(screw_y + band_half_w, floppy_notch_y0 - floppy_bulkhead_t - 1);
+                        band_y1 = (off == forward_off)
+                            ? bulkhead_back_y + 0.5   // fuse into the bulkhead, small overlap
+                            : min(screw_y + band_half_w, bulkhead_back_y - 1);
                         if (band_y1 - band_y0 > 4) {
                             translate([rail_x - floppy_rail_t/2, band_y0, bay_face_z0])
                                 cube([floppy_rail_t, band_y1 - band_y0, true_ceiling_z - fillet_h - bay_face_z0]);
@@ -1115,10 +1167,11 @@ module main_floppy_bay_brackets() {
                     }
                 }
                 for (off = floppy_screw_front_offsets)
-                    if (floppy_notch_y0 - off > floppy_rail_y0 + 2)
-                        translate([rail_x - floppy_rail_t/2 - 1, floppy_notch_y0 - off, bay_face_z0 + floppy_screw_z_offset])
-                            rotate([0,90,0])
-                                cylinder(d = m3_pilot_d, h = floppy_rail_t + 2);
+                    for (z_off = floppy_screw_z_offsets)
+                        if (floppy_notch_y0 - off > floppy_rail_y0 + 2)
+                            translate([rail_x - floppy_rail_t/2 - 1, floppy_notch_y0 - off, bay_face_z0 + z_off])
+                                rotate([0,90,0])
+                                    cylinder(d = m3_pilot_d, h = floppy_rail_t + 2);
             }
         }
     }
@@ -1173,7 +1226,9 @@ module main_standoffs_braces() {
 // wall, not just a thin slab bridging across.
 cn1_raceway_brace_w  = 3;
 cn1_raceway_brace_h  = 12;
-cn1_raceway_brace_x1 = 32; // past the raceway's far leg (raceway_x+~6) with clearance
+cn1_raceway_brace_x1 = 44; // past the raceway's far leg (raceway_x+~4) with clearance --
+                             // raceway_x moved further out (see its own comment), so this
+                             // moved out to match
 module main_cn1_raceway_braces() {
     for (s = board_standoffs)
         // The 2 real standoffs near CN1 (X~9.1, Y~28.6/94.0) -- NOT just an
@@ -1622,12 +1677,16 @@ module main_cart_slot_support() {
 // platform, so a Multipak/cartridge edge is registered side-to-side as
 // it's pushed in -- matches the raised guide structure visible at the
 // cart-slot corner of a real stock case bottom (Img_9744). Same span as
-// the support platform above (wall to CN1), for the same reason. First-pass
-// height/spacing (just outside the 92mm slot opening); verify against a
-// real cartridge edge/Multipak card before finalizing.
+// the support platform above (wall to CN1), for the same reason.
+// cart_guide_span sized so the walls' own INNER clear gap matches the
+// real cut opening (cart_slot_w + cart_slot_margin_w = 110) -- per
+// direction, "the cart port guides... are not wide enough": this was
+// still 96, sized against a stale 92mm slot-width placeholder from
+// before the real 108mm cartridge dimension was known, so it was
+// actually narrower than the opening itself.
 cart_guide_h    = 18;
 cart_guide_t    = 2.5;
-cart_guide_span = 96;
+cart_guide_span = cart_slot_w + cart_slot_margin_w + 2*cart_guide_t;
 module main_cart_guide_walls() {
     xy = cn1_xy();
     inner_wall_x = -(case_margin - wall);
@@ -1683,7 +1742,10 @@ raceway_h          = 5;   // first-pass, not specified -- tall enough to
 raceway_bump_d     = 1.6;
 raceway_bump_w     = 4;
 raceway_bump_pitch = 20;
-raceway_x  = cn3_xy()[0] + 3;
+raceway_x  = cn3_xy()[0] + 3 + 12; // shifted 12mm further from CN3 (was +3) per direction,
+                                     // to make room near the right-rear topbottom screw
+                                     // boss (main_topbottom_screw_rr_x, centered 35mm in
+                                     // from the case's own right edge)
 raceway_y0 = -(rear_margin - wall);      // rear wall inner face
 raceway_y1 = cn3_xy()[1] - cn3_open/2 - cn3_collar_t + 0.01; // butt flush
                            // against the CN3 collar's own outer face (with
@@ -1738,7 +1800,9 @@ cn3_wall_min = 2;
 // standoff_height instead of reaching it, and everything above that
 // (the shelf + pedestal below) makes up the difference. Moved above
 // main_cn3_collar() since it now needs this value for its own height.
-cn3_pedestal_drop   = 8;
+cn3_pedestal_drop   = 4; // was 8 -- per direction, pedestal (and the collar/space beneath
+                          // it, which shares this same height reference) moved 4mm closer
+                          // to the PCB
 cn3_pedestal_base_h = standoff_height - cn3_pedestal_drop;
 module main_cn3_access_cut() {
     // Subtractive: wider lead-in step near the floor, then the true
@@ -1820,7 +1884,7 @@ module main_cn3_pedestal() {
 // New attachment point "in that corner" (per direction) -- reverted back
 // to its original size/position (7.5mm OD) along with the pedestal above.
 cn3_new_standoff_hole_d = m3_pilot_d;
-function cn3_new_standoff_xy() = [cn3_xy()[0] - cn3_open/2 + 8, cn3_xy()[1] + cn3_open/2 - 9];
+function cn3_new_standoff_xy() = [cn3_xy()[0] - cn3_open/2 + 8, cn3_xy()[1] + cn3_open/2 - 11]; // -9 -> -11, 2mm toward the back
 module main_cn3_new_standoff() {
     p = cn3_new_standoff_xy();
     translate([0, 0, cn3_pedestal_base_h])
@@ -1963,21 +2027,40 @@ module main_magnet_pockets() {
 // inside the floppy bay's own footprint). Only the 4 corner bosses
 // (main_topbottom_screw_corners) remain.
 main_topbottom_screw_xy = [];
-// 4 more, right in the extreme corners -- per direction, so there's a
-// solid top/bottom connection point right at each corner too, not just
-// along the rear/front edges. Measured from the case's own TRUE corners
-// (the actual outer footprint corners, before corner_r rounding) rather
-// than the board frame the row above uses, since "how close to the real
-// corner" is what actually matters here -- pushed in to 6mm per direction
-// (down from an initial 15mm), still clear of the corner_r=5 rounding and
-// sitting entirely on continuous floor past every wall's inner face.
+// 4 more, near the extreme corners -- per direction, so there's a solid
+// top/bottom connection point right at each corner too, not just along
+// the rear/front edges. Measured from the case's own TRUE corners (the
+// actual outer footprint corners, before corner_r rounding).
+//
+// Bracing is now a straight 2mm rect from the boss's own cylinder
+// straight to each of the two nearby walls (see topbottom_boss_brace_x/y
+// below), not a tapered wedge -- per direction, simpler and works fine
+// even when the boss sits right up against the wall (1-3mm), so most
+// corners can go back to sitting close to their actual corner rather
+// than needing to be moved inward to leave room for a wedge's own taper.
 main_topbottom_screw_corner_inset = 6;
+// The right-rear corner is a special case -- the whole rear wall from the
+// cart slot to SW2 is packed edge-to-edge with connector cutouts (CN3,
+// the cable raceway, SW2 itself), so this one can't just sit at the
+// standard inset like the other 3. Settled position, per direction: 35mm
+// in from the case's own right edge (X), clearing CN3's cutout (ends at
+// X=26.16) and the cable raceway (moved 12mm further out, see raceway_x,
+// to clear this position); Y nudged 2mm further forward from the
+// original tight-to-the-rear-wall spot to clear the cart notch's own
+// reach there.
+main_topbottom_screw_rr_x = -case_margin + 35; // 35mm in from the case's own right edge
+main_topbottom_screw_rr_y = 3;                 // was 1, nudged 2mm toward the front
+// Right-front, left-rear, and left-front all nudged in a bit further than
+// the standard inset -- per direction, 3mm further from each of their own
+// two nearby walls -- both directions are just a bigger inset from that
+// corner, so they share this second inset value instead of
+// main_topbottom_screw_corner_inset.
+main_topbottom_screw_rf_inset = main_topbottom_screw_corner_inset + 3;
 main_topbottom_screw_corners = [
-    for (cx = [-case_margin + main_topbottom_screw_corner_inset,
-                board_w + case_margin - main_topbottom_screw_corner_inset])
-    for (cy = [-rear_margin + main_topbottom_screw_corner_inset,
-                main_front_y - main_topbottom_screw_corner_inset])
-        [cx, cy]
+    [main_topbottom_screw_rr_x, main_topbottom_screw_rr_y], // right-rear (special, see above)
+    [-case_margin + main_topbottom_screw_rf_inset, main_front_y - main_topbottom_screw_rf_inset], // right-front
+    [board_w + case_margin - main_topbottom_screw_rf_inset, -rear_margin + main_topbottom_screw_rf_inset], // left-rear
+    [board_w + case_margin - main_topbottom_screw_rf_inset, main_front_y - main_topbottom_screw_rf_inset], // left-front
 ];
 // The front-side row (Y ~= main_depth-25) lands right inside the floppy
 // bay's own footprint for X=42/140/238 -- a screw boss there would get
@@ -1985,9 +2068,18 @@ main_topbottom_screw_corners = [
 // fragments). There's no structural point fastening top-to-bottom through
 // what's now an open bay compartment anyway, so those positions are
 // dropped rather than relocated.
+//
+// Margin tightened from floppy_duct_wall_t+5 (7.4mm) to 3mm -- per
+// direction, the front-left/front-right CORNER bosses (after being moved
+// further in, X=1.83/278.17) were landing just inside that old, overly
+// generous margin around the bay's real footprint (X 8.4-271.6) and
+// getting silently dropped by this same filter, even though they're not
+// actually anywhere near the bay's real cut -- they were just "gone."
+// 3mm is still comfortably more than the bay-conflict filter needs to
+// catch the genuinely-inside positions this was written for.
 function main_screw_pos_conflicts_bay(p) =
-    (p[0] > board_w/2 - floppy_face_w/2 - floppy_duct_wall_t - 5)
-    && (p[0] < board_w/2 + floppy_face_w/2 + floppy_duct_wall_t + 5)
+    (p[0] > board_w/2 - floppy_face_w/2 - 3)
+    && (p[0] < board_w/2 + floppy_face_w/2 + 3)
     && (p[1] > floppy_bulkhead_y0 - 5);
 main_topbottom_screw_positions_raw = concat(
     main_topbottom_screw_xy,
@@ -2044,7 +2136,14 @@ module main_topbottom_screw_boss_top() {
                     translate([rim_x, rim_y, rim_z]) sphere(r = 0.6);
                 }
             }
-            translate([p[0], p[1], parting_h - 1]) cylinder(d = m3_pilot_d, h = pilot_depth + 1); // self-tap/heat-set pilot
+            translate([p[0], p[1], parting_h - 1]) cylinder(d = m3_pilot_d, h = pilot_depth + 1); // self-tap pilot
+            // conical recess, mates with the raised cone tip on the bottom
+            // shell's own boss (main_topbottom_screw_boss_bottom_solid) --
+            // per direction, a self-aligning registration feature so the
+            // two halves nest together as the case closes, not just a
+            // flat screw boss meeting a flat screw boss.
+            translate([p[0], p[1], parting_h - 0.01])
+                cylinder(d1 = topbottom_cone_base_d, d2 = topbottom_cone_top_d, h = topbottom_cone_h + 0.01);
         }
     }
 }
@@ -2053,20 +2152,54 @@ module main_topbottom_screw_boss_top() {
 // as the real board standoffs, with a wide head-clearance pocket on the
 // underside (where the screw is actually inserted from) and a narrow
 // shaft clearance continuing up from there, inside solid material the
-// whole way, for real strength. Braced to the nearest side wall the same
-// way the real board standoffs already are (main_standoffs_braces()) --
-// all 4 positions are corner-inset, close to a side wall.
+// whole way, for real strength. Braced to BOTH nearby walls (not just the
+// nearest side wall) -- per direction, moved away from the true corner
+// and tied back to it with a continuous rib each way, rather than sitting
+// right at the corner unbraced.
+//
+// Raised by 1.6mm (standoff_height -> parting_h) per direction -- these
+// bosses only reached standoff_height (the PCB standoff height), 1.6mm
+// SHORT of parting_h (the actual split line the two shells meet at,
+// 1.6mm higher to account for the PCB's own edge lip) -- so they weren't
+// actually meeting the top shell's own boss flush.
 topbottom_boss_od = 10;
 topbottom_boss_shaft_d = 3.6; // M3 clearance -- the screw passes through freely here,
                                 // it only THREADS into the top shell's own boss above
 topbottom_boss_head_d = 7;    // M3 pan/socket head clearance
 topbottom_boss_head_h = 8;    // how tall the head pocket is, on the UNDERSIDE of the boss
+topbottom_boss_h = parting_h; // was standoff_height -- see comment above
+topbottom_cone_base_d = 7;    // cone tip base -- fits within the top boss's own 8mm OD
+topbottom_cone_top_d  = 5;    // cone tip peak -- comfortably larger than the shaft hole (3.6)
+topbottom_cone_h      = 1.5;
+// Straight rect brace, boss's own center to a wall -- per direction,
+// simpler than a tapered wedge and works fine even when the wall is only
+// 1-3mm away (a wedge's own taper geometry gets awkward at that range).
+// Deliberately runs to the boss's CENTER, not just its edge, so it
+// overlaps the boss's own cylinder for a clean union regardless of inset.
+topbottom_boss_brace_w = 2;
+module topbottom_boss_brace_x(wall_x, boss_x, boss_y, h) {
+    x0 = min(wall_x, boss_x);
+    x1 = max(wall_x, boss_x);
+    translate([x0, boss_y - topbottom_boss_brace_w/2, 0])
+        cube([x1 - x0, topbottom_boss_brace_w, h]);
+}
+module topbottom_boss_brace_y(wall_y, boss_x, boss_y, h) {
+    y0 = min(wall_y, boss_y);
+    y1 = max(wall_y, boss_y);
+    translate([boss_x - topbottom_boss_brace_w/2, y0, 0])
+        cube([topbottom_boss_brace_w, y1 - y0, h]);
+}
 module main_topbottom_screw_boss_bottom_solid() {
     right_inner_x = -(case_margin - wall);
     left_inner_x  = board_w + (case_margin - wall);
+    rear_inner_y  = -(rear_margin - wall);
+    front_inner_y = main_front_y - wall;
     for (p = main_topbottom_screw_positions) {
-        translate([p[0], p[1], 0]) cylinder(d = topbottom_boss_od, h = standoff_height);
-        cross_brace_wedge_x(p[0] < board_w/2 ? right_inner_x : left_inner_x, p[0], p[1], standoff_brace_w, standoff_height);
+        translate([p[0], p[1], 0]) cylinder(d = topbottom_boss_od, h = topbottom_boss_h);
+        translate([p[0], p[1], topbottom_boss_h])
+            cylinder(d1 = topbottom_cone_base_d, d2 = topbottom_cone_top_d, h = topbottom_cone_h);
+        topbottom_boss_brace_x(p[0] < board_w/2 ? right_inner_x : left_inner_x, p[0], p[1], topbottom_boss_h);
+        topbottom_boss_brace_y(p[1] < main_front_y/2 ? rear_inner_y : front_inner_y, p[0], p[1], topbottom_boss_h);
     }
 }
 module main_topbottom_screw_boss_bottom_holes() {
@@ -2080,14 +2213,16 @@ module main_topbottom_screw_boss_bottom_holes() {
     //
     // Wide head-clearance pocket on the UNDERSIDE (where the screw is
     // actually inserted from outside), narrowing to the shaft clearance
-    // as it continues up toward the top shell -- per direction ("I expect
-    // the wider hole to be on the underside to accommodate the screw
-    // head"); had this inverted the first time.
+    // as it continues up toward the top shell (now all the way through
+    // the cone tip too, so the screw shaft has a clear path the whole way
+    // up to thread into the top shell's own boss) -- per direction ("I
+    // expect the wider hole to be on the underside to accommodate the
+    // screw head"); had this inverted the first time.
     for (p = main_topbottom_screw_positions) {
         translate([p[0], p[1], -1])
             cylinder(d = topbottom_boss_head_d, h = topbottom_boss_head_h + 1);
         translate([p[0], p[1], topbottom_boss_head_h])
-            cylinder(d = topbottom_boss_shaft_d, h = standoff_height - topbottom_boss_head_h + 1);
+            cylinder(d = topbottom_boss_shaft_d, h = topbottom_boss_h + topbottom_cone_h - topbottom_boss_head_h + 1);
     }
 }
 
@@ -2174,7 +2309,15 @@ module main_case_top() {
                     // main_floppy_bay_duct_protect() shields its footprint from this
                     // cut, so the outer solid's own natural material stays in place
                     // there as the bay duct's walls -- see that module's own comment.
-                    difference() { main_top_inner_cavity(); main_floppy_bay_duct_protect(); }
+                    // main_floppy_bay_roof_fill_protect() similarly keeps the roof
+                    // solid right above the bulkhead instead of hollow.
+                    difference() {
+                        main_top_inner_cavity();
+                        union() {
+                            main_floppy_bay_duct_protect();
+                            main_floppy_bay_roof_fill_protect();
+                        }
+                    }
                 }
                 main_topbottom_screw_boss_top();
             }
@@ -2405,7 +2548,7 @@ module kb_case_bottom_right() {
 //   "keyboard_bottom_left" -- printable piece (only if keyboard_attached=false)
 //   "keyboard_bottom_right"-- printable piece
 //   "keyboard_bottom_whole"
-part = "main_top_whole";
+part = "main_bottom_whole";
 
 // exploded gap between the bottom tray and top shell in "preview" only, so
 // the parting line and connector notches are visible; they sit flush (no
