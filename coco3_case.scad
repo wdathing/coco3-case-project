@@ -827,7 +827,14 @@ module rim_notch_x(wall_x, y, width, height, depth, dir = -1, taper = 0, taper_g
 // scope to reuse, see file header). Position along the rear wall is a
 // placeholder: parked left of SW1 in open space, clear of every real
 // connector; move it once you've picked an actual USB-C panel-mount part.
-usbc_power_x = 20;
+//
+// Cutout disabled per direction (see its own commented-out call in
+// main_connector_cutouts_top() below) -- kept overlapping the right-rear
+// topbottom screw boss area even after moving it, and with no real part
+// picked yet there's no reason to keep chasing a placeholder hole's exact
+// position. usbc_power_x is unused while that's commented out; re-enable
+// both once a real USB-C panel-mount part is chosen.
+usbc_power_x = 5;
 
 // Separate USB-C PD "trigger" board mount, back-left corner (per
 // direction) -- clear of SW1 (the leftmost real rear connector, X~232) --
@@ -881,15 +888,38 @@ module main_usbc_trigger_standoffs_holes() {
 // earlier 92x19 placeholder, an unverified guess at a "standard 40-pos
 // .1in edge-card envelope"), plus insertion clearance and a lead-in funnel
 // at the panel face to help guide the cartridge in.
-cart_slot_w           = 108;
-cart_slot_h           = 23;
-cart_slot_margin_w    = 2;  // total width clearance (both sides combined) -- halved from 4
-                             // per direction ("the cart slot is too wide"); no exact target
-                             // given, so this is a first cut -- re-check fit against the
-                             // real cartridge before the next print
-cart_slot_margin_h    = 3;  // total height clearance
-cart_slot_taper       = 10; // lead-in funnel depth at the panel's outer face
-cart_slot_taper_grow  = 6;  // how much wider the funnel is right at the surface (total)
+//
+// Per direction, the previous constant-110-wide-past-the-taper design was
+// "just a bit too wide" -- now a genuine funnel the whole way in: 110mm
+// at the panel's outer face, narrowing down to 108.5mm (0.5mm clearance)
+// right at CN1's own real position, then staying 108.5 the rest of the
+// way. See main_cart_slot_cut() below.
+cart_slot_w                  = 108;  // real card width
+cart_slot_h                  = 23;
+cart_slot_connector_margin_w = 0.5;  // clearance right at the connector
+cart_slot_margin_h           = 2;    // total height clearance -- reduced from 3 (nominal
+                                       // height 26 -> 25) per direction, "the cart slot is
+                                       // too tall"
+cart_slot_surface_w          = 110;  // width at the panel's own outer face
+cart_slot_taper_grow_h       = 0;    // no vertical flare now -- was 6, but that made the
+                                       // surface opening 32mm tall, part of what read as
+                                       // "too tall"; height is just a flat 25mm the whole depth
+module main_cart_slot_cut() {
+    xy = cn1_xy();
+    wall_x = -case_margin;
+    notch_depth = case_margin*3;
+    taper_depth = xy[0] - wall_x; // reaches the nominal (narrow) width right at CN1 itself
+    nominal_w = cart_slot_w + cart_slot_connector_margin_w;
+    nominal_h = cart_slot_h + cart_slot_margin_h;
+    hull() {
+        translate([wall_x, xy[1] - cart_slot_surface_w/2, parting_h - 1])
+            cube([0.01, cart_slot_surface_w, nominal_h + cart_slot_taper_grow_h + 1]);
+        translate([wall_x + taper_depth - 0.01, xy[1] - nominal_w/2, parting_h - 1])
+            cube([0.01, nominal_w, nominal_h + 1]);
+    }
+    translate([wall_x + taper_depth, xy[1] - nominal_w/2, parting_h - 1])
+        cube([notch_depth - taper_depth, nominal_w, nominal_h + 1]);
+}
 
 // CN3's real pad position (X=18.21, from board_connectors) sits right in
 // the same right-rear corner as CN1/the cart slot -- per direction, "the
@@ -918,11 +948,10 @@ module main_connector_cutouts_top() {
         else if (kind == "reset_button")
             rim_notch_y(x, -rear_margin, 8, 12, notch_depth, notch_r);
         else if (kind == "cart_slot")
-            rim_notch_x(-case_margin, y, cart_slot_w + cart_slot_margin_w, cart_slot_h + cart_slot_margin_h,
-                        notch_depth, dir = 1, taper = cart_slot_taper, taper_grow = cart_slot_taper_grow);
+            main_cart_slot_cut();
         // "cart_slot" exits the RIGHT-SIDE panel (min X, post board_pt mirror, still case_margin), all others exit the REAR panel (min Y, now rear_margin)
     }
-    rim_notch_y(usbc_power_x, -rear_margin, 10, 5, notch_depth, notch_r);
+    //rim_notch_y(usbc_power_x, -rear_margin, 10, 5, notch_depth, notch_r);
 }
 
 module main_usb_passthrough_front() {
@@ -1665,7 +1694,14 @@ function cn1_xy() = [board_pt(236.69, -61.13)[0], board_pt(236.69, -61.13)[1]];
 // brace the board against a cartridge cantilevered OUTWARD past the case
 // edge, so it belongs between the connector and the wall, not on the far
 // side of it toward the board's interior/the other standoffs.
-cart_support_span_y = 100;
+//
+// Widened 100 -> 120 per direction -- both guide walls (see
+// main_cart_guide_walls, span ~[2.4, 4.9] and ~[117.4, 119.9]) were
+// floating above open air past this platform's old edges (111.13 short
+// of the front guide, 11.13 short of the back guide). 120 gets under both
+// with a little margin, while stopping short of the actual rear corner
+// (Y=0) rather than running flush into it.
+cart_support_span_y = 120;
 module main_cart_slot_support() {
     xy = cn1_xy();
     inner_wall_x = -(case_margin - wall); // inner face of the min-X wall
@@ -1686,7 +1722,7 @@ module main_cart_slot_support() {
 // actually narrower than the opening itself.
 cart_guide_h    = 18;
 cart_guide_t    = 2.5;
-cart_guide_span = cart_slot_w + cart_slot_margin_w + 2*cart_guide_t;
+cart_guide_span = cart_slot_surface_w + 2*cart_guide_t;
 module main_cart_guide_walls() {
     xy = cn1_xy();
     inner_wall_x = -(case_margin - wall);
@@ -1762,16 +1798,19 @@ raceway_y1 = cn3_xy()[1] - cn3_open/2 - cn3_collar_t + 0.01; // butt flush
 raceway_len = raceway_y1 - raceway_y0;
 
 // Per direction: not a corner notch after all -- the whole front wall
-// moves back (toward the rear), and the whole right wall moves in (toward
-// center). Back and left stay at their original position. Tuned by hand
-// directly in this file to 5mm front / 6mm right -- both still leave the
-// collar's remaining footprint short of the access-cut hole (42x42,
-// unchanged, see main_cn3_access_cut() below) on those two sides, so
-// there's no wall material near the hole there -- open on the front and
-// right (by a few mm now, not the full inset), still a real 2.4mm frame
-// on the back and left.
+// moves back (toward the rear). Back and left stay at their original
+// position. Tuned by hand directly in this file to 5mm front -- still
+// leaves the collar's remaining footprint short of the access-cut hole
+// (42x42, unchanged, see main_cn3_access_cut() below) on that side, so
+// there's no wall material near the hole there -- open on the front (by a
+// few mm now, not the full inset), still a real 2.4mm frame elsewhere.
+//
+// The right inset (was 6mm, same "open by a few mm" idea) is REMOVED per
+// direction -- "the wall holding up that platform, closest to the right
+// side, just isn't there": the pedestal above needs real support on that
+// side, not an opening.
 cn3_collar_front_inset = 5;
-cn3_collar_right_inset = 6;
+cn3_collar_right_inset = 0;
 module main_cn3_collar() {
     // Additive collar wall around the opening, floor to cn3_pedestal_base_h.
     // NOTE: reverted a z=-0.5 "defensive overlap" tried here -- that would
@@ -1886,9 +1925,12 @@ module main_cn3_pedestal() {
 cn3_new_standoff_hole_d = m3_pilot_d;
 function cn3_new_standoff_xy() = [cn3_xy()[0] - cn3_open/2 + 8, cn3_xy()[1] + cn3_open/2 - 11]; // -9 -> -11, 2mm toward the back
 module main_cn3_new_standoff() {
+    // Extends 2mm further down than the pedestal's own base per direction
+    // ("extend under [it] another 2mm") -- top stays at standoff_height,
+    // only the bottom moves lower.
     p = cn3_new_standoff_xy();
-    translate([0, 0, cn3_pedestal_base_h])
-        standoff_peg(p[0], p[1], cn3_new_standoff_hole_d, standoff_height - cn3_pedestal_base_h);
+    translate([0, 0, cn3_pedestal_base_h - 2])
+        standoff_peg(p[0], p[1], cn3_new_standoff_hole_d, standoff_height - cn3_pedestal_base_h + 2);
 }
 
 // Groove around the OUTSIDE of the tray: starts at the SAME height as the
@@ -2089,6 +2131,25 @@ main_topbottom_screw_positions_raw = concat(
 main_topbottom_screw_positions = [
     for (p = main_topbottom_screw_positions_raw) if (!main_screw_pos_conflicts_bay(p)) p
 ];
+
+// Shields each boss's own footprint from the general inner-cavity cut --
+// per direction ("the back right standoff got eaten"). Empirically this
+// was a CGAL boolean robustness issue, not a real geometric conflict: the
+// outer solid and the cavity cut BOTH had material at the right-rear
+// boss's position (as expected -- that's an ordinary hollow-shell area),
+// the boss's own hull was independently solid there too, but the union of
+// (outer-cavity) with the boss still came back empty at that spot.
+// Protecting the footprint from the cavity cut in the first place
+// sidesteps the union causing trouble entirely -- same technique as
+// main_floppy_bay_duct_protect(). Applied to all 4 corners for safety,
+// even though only the right-rear one was confirmed broken -- shielding
+// a footprint that was never actually hollow there is a no-op.
+module main_topbottom_screw_boss_top_protect() {
+    boss_shield_r = 6; // a bit more than the boss's own 4mm radius, for margin
+    for (p = main_topbottom_screw_positions)
+        translate([p[0], p[1], parting_h - 2])
+            cylinder(r = boss_shield_r, h = rear_tower_h);
+}
 
 module main_topbottom_screw_boss_top() {
     // Each boss spans the FULL available height at its own Y, from the
@@ -2316,6 +2377,7 @@ module main_case_top() {
                         union() {
                             main_floppy_bay_duct_protect();
                             main_floppy_bay_roof_fill_protect();
+                            main_topbottom_screw_boss_top_protect();
                         }
                     }
                 }
@@ -2548,7 +2610,7 @@ module kb_case_bottom_right() {
 //   "keyboard_bottom_left" -- printable piece (only if keyboard_attached=false)
 //   "keyboard_bottom_right"-- printable piece
 //   "keyboard_bottom_whole"
-part = "main_bottom_whole";
+part = "main_top_whole";
 
 // exploded gap between the bottom tray and top shell in "preview" only, so
 // the parting line and connector notches are visible; they sit flush (no
