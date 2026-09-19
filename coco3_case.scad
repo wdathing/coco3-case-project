@@ -1413,9 +1413,10 @@ module main_floppy_bay_bracket_cross_braces() {
 // "the back two middle drive brackets don't have cross bracing." The outer rails already get
 // main_floppy_bay_bracket_cross_braces() out to the duct walls; the inner pair had nothing tying them together.
 // Now a small vertical web: floppy_web_h (10mm) tall, floppy_web_w (3mm) thick, spanning the open gap between
-// the two rails (its ends sink into each rail's thickness for a real fuse), sitting at the MIDDLE of the bracket
-// -- centred along the rear band (on the drive screw's own Y) and at mid-height of the rail. Mid-height also keeps
-// it well above the drive-screw holes (near the rail's free end), so a screwdriver still reaches them from the gap.
+// the two rails (its ends sink into each rail's thickness for a real fuse), centred along the rear band (on the
+// drive screw's own Y) and at the TOP of the rails, fused to the roof (per direction: "on the top... no need
+// for it to float" -- printed roof-down it grows from the roof, so it needs no support). At the top it is also
+// far above the drive-screw holes (near the rail's free end), so a screwdriver still reaches them from the gap.
 floppy_web_w = 3;     // thickness (Y)
 floppy_web_h = 10;    // height (Z)
 module main_floppy_bay_center_web() {
@@ -1424,7 +1425,7 @@ module main_floppy_bay_center_web() {
     rail_h  = true_ceiling_z - bay_face_z0;                            // rail height, free end -> roof
     // inner rail centres sit floppy_bay_gap/2 - fit_clear_w/2 - rail_t/2 either side of board_w/2
     rail_off = floppy_bay_gap/2 - floppy_fit_clear_w/2 - floppy_rail_t/2;
-    translate([board_w/2 - rail_off, screw_y - floppy_web_w/2, bay_face_z0 + (rail_h - floppy_web_h)/2])
+    translate([board_w/2 - rail_off, screw_y - floppy_web_w/2, true_ceiling_z + 0.4 - floppy_web_h])   // +0.4: sinks into the roof
         cube([2*rail_off, floppy_web_w, floppy_web_h]);
 }
 
@@ -2471,15 +2472,19 @@ main_topbottom_screw_positions = [
 // They used to run from the parting line ALL the way up to the roof (a ~90mm slender column now
 // that the tower is tall) wrapped in a fat solid "protect" shield + brace blocks -- the "pillar
 // object". Now each is just:
-//   * a short cylinder rising from the parting line (top_boss_h; clipped so it can never reach the
-//     roof, even where the ramp is low), with a 45deg chamfer on its free end so it prints without
-//     support whichever way up the top is printed;
-//   * a thin rib (top_boss_brace_w) from the cylinder to the nearest side wall, and -- in the flat
-//     rear zone -- to the rear wall, as tall as the cylinder. The right-rear boss skips the side
-//     rib: that corridor belongs to the bottom shell's cart guide wall.
+//   * a slim cylinder rising from the parting line -- top_boss_to_roof = true: ALL THE WAY to the roof
+//     (per direction: printed roof-down, a boss that stops short hangs in mid-air and needs support;
+//     one that reaches the roof grows from it with none). Its top follows the sloped roof underside
+//     and sinks a hair into it. top_boss_to_roof = false gives the short chamfered stub instead
+//     (top_boss_h, clipped so it never reaches the roof);
+//   * a thin rib (top_boss_brace_w) from the cylinder to the nearest side wall (only as tall as the
+//     side louver grooves allow, see top_side_vent_floor_z) and -- in the flat rear zone -- to the
+//     rear wall (full height). The right-rear boss skips the side rib: that corridor belongs to the
+//     bottom shell's cart guide wall.
 // The heat-set pilot (top_boss_insert_d) is cut LAST (see main_topbottom_screw_boss_top_holes()).
 top_boss_d          = 9;     // OD: 2.5mm of wall around a 4.0mm insert hole
-top_boss_h          = 16;    // above the parting line
+top_boss_to_roof    = true;  // full-height (see above)
+top_boss_h          = 16;    // short-stub height above the parting line (only if !top_boss_to_roof)
 top_boss_chamfer    = 3.5;   // 45deg on the free end
 top_boss_brace_w    = 3;     // rib thickness
 top_boss_insert_d   = 4.0;   // heat-set insert bore (M3 inserts). Independent of screw_mount_type, which
@@ -2487,20 +2492,45 @@ top_boss_insert_d   = 4.0;   // heat-set insert bore (M3 inserts). Independent o
 top_boss_insert_depth = 8;   // insert bore depth from the parting line (insert ~5.7mm + room)
 function main_topbottom_is_rr(p) =
     (p[0] == main_topbottom_screw_rr_x && p[1] == main_topbottom_screw_rr_y);
-// boss height, never reaching the local roof underside (matters on the low front ramp)
+// short-stub height, never reaching the local roof underside (matters on the low front ramp)
 function top_boss_h_at(p) = min(top_boss_h,
     local_wedge_h(p[1] + top_boss_d/2, rear_tower_h - wall, front_deck_h - wall) - parting_h - 0.8);
+// roof underside height at a given Y (+0.3: sink into the roof so it fuses), measured from the parting line
+top_rib_sink = 0.3;         // how far a rib's top sinks into the flat rear roof (fuses it)
+top_rib_ramp_clear = 3;     // on the steep front ramp the rib top instead stops this far BELOW the roof skin: the skin
+                            // is only ~1mm thick there (horizontally), and a rib top touching it leaves detached slivers
+function top_roof_h_at(y) = local_wedge_h(y, rear_tower_h - wall, front_deck_h - wall)
+                            + ((y > main_break1_y) ? -top_rib_ramp_clear : top_rib_sink) - parting_h;
+// The side louvers are vertical grooves that start at side_vent_z0 and cut ~13.6mm deep into the case (see
+// main_louvers()). A rib on a SIDE wall that reaches above that would be sliced by a groove and leave a loose
+// sliver, so side ribs stop 1mm under the groove floor. (The min-X wall's grooves start higher, above the cart slot.)
+function top_side_vent_floor_z(min_x_side) =
+    min_x_side ? max(max(41.85 + 2, parting_h + 6), parting_h + cart_slot_h + cart_slot_margin_h + 8)
+               : max(41.85 + 2, parting_h + 6);
 module main_topbottom_screw_boss_top_braces() {
     right_inner_x = -(case_margin - wall);
     left_inner_x  = board_w + (case_margin - wall);
     rear_inner_y  = -(rear_margin - wall);
     sink = 0.4;   // ribs sink a hair into the wall so they fuse
     for (p = main_topbottom_screw_positions) {
-        hb = top_boss_h_at(p) - top_boss_chamfer;
+        hb = top_boss_to_roof ? top_roof_h_at(p[1]) : top_boss_h_at(p) - top_boss_chamfer;
         wall_x = p[0] < board_w/2 ? right_inner_x : left_inner_x;
-        if (!main_topbottom_is_rr(p))
-            translate([min(wall_x - (wall_x < p[0] ? sink : 0), p[0]), p[1] - top_boss_brace_w/2, parting_h - 0.01])
-                cube([abs(wall_x - p[0]) + sink, top_boss_brace_w, hb]);
+        if (!main_topbottom_is_rr(p)) {
+            x0 = min(wall_x - (wall_x < p[0] ? sink : 0), p[0]);
+            len = abs(wall_x - p[0]) + sink;
+            ya = p[1] - top_boss_brace_w/2;  yb = p[1] + top_boss_brace_w/2;
+            // The rib's TOP follows the roof slope (hull of two thin slabs, one per Y face): a flat-topped box sized
+            // for the roof at its centre line stuck out through the roof on the steep ramp at the front corners
+            // (the roof drops ~2mm per mm of Y there) and left detached slivers.
+            cap = top_side_vent_floor_z(p[0] < board_w/2) - 1 - parting_h;   // stay clear of the side grooves
+            if (top_boss_to_roof)
+                hull() {
+                    translate([x0, ya, parting_h - 0.01]) cube([len, 0.01, min(cap, top_roof_h_at(ya))]);
+                    translate([x0, yb - 0.01, parting_h - 0.01]) cube([len, 0.01, min(cap, top_roof_h_at(yb))]);
+                }
+            else
+                translate([x0, ya, parting_h - 0.01]) cube([len, top_boss_brace_w, hb]);
+        }
         if (p[1] <= main_break1_y)
             translate([p[0] - top_boss_brace_w/2, rear_inner_y - sink, parting_h - 0.01])
                 cube([top_boss_brace_w, abs(p[1] - rear_inner_y) + sink, hb]);
@@ -2527,12 +2557,29 @@ module main_cart_guide_top_clearance() {
 }
 
 module main_topbottom_screw_boss_top() {
+    boss_r = top_boss_d/2;
+    rim_n = 16;
     for (p = main_topbottom_screw_positions) {
-        hb = top_boss_h_at(p);
-        translate([p[0], p[1], parting_h - 0.01]) {
-            cylinder(d = top_boss_d, h = hb - top_boss_chamfer);
-            translate([0, 0, hb - top_boss_chamfer - 0.01])
-                cylinder(d1 = top_boss_d, d2 = top_boss_d - 2*top_boss_chamfer, h = top_boss_chamfer + 0.01);
+        if (top_boss_to_roof) {
+            // Slanted-top cylinder: hull of the base disk and a ring of points on the top rim, each at that exact
+            // point's own roof-underside height (pure algebra via local_wedge_h(), no mesh-on-mesh intersection --
+            // the front-corner bosses sit on the steep ramp, where the roof drops over a boss's own width).
+            hull() {
+                translate([p[0], p[1], parting_h - 0.01]) cylinder(d = top_boss_d, h = 0.01);
+                for (i = [0:rim_n-1]) {
+                    rx = p[0] + boss_r*cos(i*360/rim_n);
+                    ry = p[1] + boss_r*sin(i*360/rim_n);
+                    translate([rx, ry, local_wedge_h(ry, rear_tower_h - wall, front_deck_h - wall)])
+                        sphere(r = 0.6, $fn = 8);   // its top pokes 0.6 into the roof (2.4 thick)
+                }
+            }
+        } else {
+            hb = top_boss_h_at(p);
+            translate([p[0], p[1], parting_h - 0.01]) {
+                cylinder(d = top_boss_d, h = hb - top_boss_chamfer);
+                translate([0, 0, hb - top_boss_chamfer - 0.01])
+                    cylinder(d1 = top_boss_d, d2 = top_boss_d - 2*top_boss_chamfer, h = top_boss_chamfer + 0.01);
+            }
         }
     }
 }
@@ -2684,6 +2731,47 @@ module main_case_bottom() {
     }
 }
 
+// ---- BADGE RECESS: a shallow rectangle in the angled front face, below the drive-bay cutout ----
+// badge_width x badge_height (the height is measured ALONG the slope), badge_depth deep (perpendicular to the face),
+// centred on the case. The ramp below the bay is only a ~1mm skin (wall is 2.4mm VERTICALLY, ~1mm perpendicular on
+// a face this steep), so a backing pad is added behind the badge area (main_badge_pad) that leaves
+// badge_backing of wall behind the recess. The badge sits centred in the strip between the bay cutout's bottom
+// edge and the ramp's bottom edge (where the keyboard shelf meets it).
+badge_width   = 123;
+badge_height  = 14;
+badge_depth   = 1.5;
+badge_backing = 2.0;    // wall left behind the recess floor
+badge_pad_margin = 3;   // the pad extends this far past the badge sideways
+// Horizontal placement. Seen from the FRONT the machine's left is +X (the cart slot on the right is at -X). "left" lines
+// the badge's left edge up with the left edge of the drive-bay opening (X = board_w/2 + floppy_face_w/2); "center" and
+// "right" are the alternatives.
+badge_align = "left";
+badge_cx = (badge_align == "left")  ? board_w/2 + floppy_face_w/2 - badge_width/2
+         : (badge_align == "right") ? board_w/2 - floppy_face_w/2 + badge_width/2
+         :                            board_w/2;
+ramp_m_ = (front_deck_h - rear_tower_h) / (main_break2_y - main_break1_y);   // dz/dy of the ramp (negative)
+ramp_ang = atan(-ramp_m_);                                                    // ramp angle from horizontal
+ramp_strip = (bay_face_z0 - front_deck_h) / sin(ramp_ang);                    // slope length: bay bottom edge -> ramp bottom edge
+badge_gap = (ramp_strip - badge_height) / 2;                                  // margin above and below the badge
+echo(str("Badge: ramp strip below the bay = ", ramp_strip, "mm along the slope; badge ", badge_height, "mm -> ", badge_gap,
+         "mm margin each side", badge_gap < 1 ? "  ** TOO TIGHT **" : ""));
+module badge_frame() {   // origin at the badge's TOP edge centre on the outer face; local Y runs DOWN the slope, Z out of the face
+    t_top = badge_height + badge_gap;   // slope distance from the ramp's bottom edge up to the badge's top edge
+    translate([badge_cx, main_break2_y - t_top*cos(ramp_ang), front_deck_h + t_top*sin(ramp_ang)])
+        rotate([-ramp_ang, 0, 0]) children();
+}
+module main_badge_recess() {
+    badge_frame() translate([-badge_width/2, 0, -badge_depth]) cube([badge_width, badge_height, badge_depth + 1]);
+}
+module main_badge_pad() {
+    // clipped to the outer solid so it can never poke out (the bottom of the pad is near the ramp's lower edge)
+    intersection() {
+        main_top_outer_solid();
+        badge_frame() translate([-(badge_width/2 + badge_pad_margin), -1.5, -(badge_depth + badge_backing)])
+            cube([badge_width + 2*badge_pad_margin, badge_height + 3, badge_depth + badge_backing + 0.5]);
+    }
+}
+
 module main_case_top() {
     // main_pizero_hdmi_mount() is deliberately NOT included here -- it's
     // reference-only pins (see its own comment), never checked against the
@@ -2715,12 +2803,14 @@ module main_case_top() {
                 }
                 main_topbottom_screw_boss_top();
                 main_topbottom_screw_boss_top_braces();
+                main_badge_pad();
             }
             main_louvers();
             main_connector_cutouts_top();
             main_floppy_bay_notch();
             main_topbottom_screw_boss_top_holes();   // last: see its comment
             main_cart_guide_top_clearance();
+            main_badge_recess();
         }
         // Bulkhead and brackets added OUTSIDE the difference() above -- same
         // reasoning as main_cable_raceway() in main_case_bottom(): they're
