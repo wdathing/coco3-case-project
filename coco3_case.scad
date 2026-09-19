@@ -52,16 +52,22 @@ bed_z = 250;              // printer bed Z (mm) - not used for splitting yet (pa
 split_margin = 6;         // extra clearance subtracted from bed size before deciding to split
 wall            = 2.4;    // shell wall thickness (matches OEM spirit)
 tol             = 0.25;   // general fit clearance
-// Standard pilot hole for every M3 screw post/boss THAT THREADS DIRECTLY
-// INTO PRINTED PLASTIC throughout the project (board standoffs' own real
-// mounting-hole sizes are fixed by the physical PCBs and excluded -- this
-// is only for posts this design itself owns). Per direction, all screws
-// are now M3 self-tapping only -- no more heat-set insert provision, so
-// this no longer needs to split the difference with a ~4.0-4.2mm
-// heat-set-sized hole. 2.5mm is the standard self-tap pilot for good
-// thread bite into PLA; still flagged like the file's other placeholder
-// dimensions -- true up against the specific screws you actually use.
-m3_pilot_d      = 2.5;
+// Fastening method for every M3 screw post/boss THAT THREADS DIRECTLY INTO
+// PRINTED PLASTIC throughout the project (board standoffs' own real
+// mounting-hole DIAMETERS on the PCB itself -- e.g. the 3.2mm clearance
+// holes on the kbpcb board -- are fixed by the physical boards and
+// unaffected by this; this only sets the PILOT hole printed into each
+// post/boss). Per direction: reintroduced as a build-time choice (was
+// self-tap-only for a while) -- "self_tap": screw threads directly into
+// the plastic, pilot sized for good bite (2.6mm, per direction, up from
+// the earlier 2.5mm placeholder -- "too big" reported at 2.5, i.e. that
+// was already undersized/binding, not oversized -- true up further
+// against the specific screws you actually use). "heat_set": a threaded
+// brass insert gets pressed/heat-staked into the pilot first, then a
+// machine screw threads into THAT -- pilot sized to the insert's own OD
+// (4.0mm, per direction), not the screw.
+screw_mount_type = "self_tap"; // "self_tap" or "heat_set"
+m3_pilot_d = (screw_mount_type == "heat_set") ? 4.0 : 2.6;
 $fn             = 48;     // circle resolution (raise for final render, lower for fast preview)
 
 /* [Keyboard attachment mode] */
@@ -70,6 +76,9 @@ $fn             = 48;     // circle resolution (raise for final render, lower fo
 // false = keyboard shell is a separate, detachable part: lip-and-socket +
 //         magnets join it to the main shell
 keyboard_attached = false;
+// (keyboard_attached=true = the BOLTED variant: no magnets; 3 M3 screws
+//  from inside the main case clamp the keyboard shell on -- see
+//  main_kb_bolt_holes() / kb_bolt_pilots(). false = detachable, magnets.)
 // Rectangular lip/socket lugs (main_lip_socket / kb_socket_pockets) --
 // separate from the magnet pockets, which stay on either way. Per
 // direction, turned off for now (magnets alone are enough of an
@@ -248,25 +257,64 @@ board_connectors = [
 ];
 
 // ============================================================================
-// KEYBOARD-CONTROLLER PCB GEOMETRY (real, from Coco_pico_keyb.step)
+// KEYBOARD-CONTROLLER PCB GEOMETRY (real, from Coco_pico_keyb.step) --
+// UPDATED per a revised board (smaller/simpler outline, "easier to work
+// with and cheaper"; re-extracted via a proper STEP entity-graph parse
+// this time, not hand-tracing, then cross-checked against the mounting
+// holes' own real KiCad coordinates -- all 4 matched exactly). J2, a real
+// DSUB-9 (DE-9) connector footprint now on the board, is deliberately NOT
+// wired into the case yet -- per direction, "that will be implemented in
+// a different deployment scenario."
+//
+// kbpcb_pt FIXED per direction ("upside down... rotate 180 degrees... align
+// to the front edge"): the old formula [x-79.5, -y-28] flipped only the raw
+// STEP Y axis (determinant -1 -- a MIRROR of the real board, not a rigid
+// placement) and put the panel edge (USB/LEDs/button, all clustered near
+// raw Y=-27.5) at the LOW end of local Y -- i.e. toward the case's rear,
+// with the J1/J3 ribbon-header edge (raw Y=-98) toward the front instead.
+// Both wrong. New formula copies raw X and Y directly (no flip at all --
+// determinant +1, a proper placement) and re-zeros against the real
+// outline's exact min corner (79.0, -98.0) instead of the old rounded
+// (79.5, 28) constants, so the panel edge now lands at local Y=kbpcb_d
+// (the HIGH end) -- the edge that gets placed toward the case's front wall
+// below.
 // ============================================================================
-function kbpcb_pt(x,y) = [x - 79.5, -y - 28];
+function kbpcb_pt(x,y) = [x - 79.0, y + 98.0];
 
+// Real outline is a plain rounded rect now (2mm corner radius, not
+// consumed by any cut geometry below -- kbpcb_w/kbpcb_d, the bounding
+// box, are what's actually used -- so the corner rounding is just kept
+// here for reference, not modeled).
 kbpcb_outline_raw = [
- [190.000,-31.000],[187.000,-28.000],[82.500,-28.000],[79.500,-31.000],
- [79.500,-31.443],[81.000,-33.600],[79.500,-32.557],[79.500,-105.500],
- [82.500,-108.500],[187.000,-108.500],[190.000,-105.500]
+ [167.5,-27.5],[167.5,-98.0],[79.0,-98.0],[79.0,-27.5]
 ];
 kbpcb_outline = [ for (p = kbpcb_outline_raw) kbpcb_pt(p[0], p[1]) ];
-kbpcb_w = 110.5; kbpcb_d = 80.5; kbpcb_thickness = 1.56; // real
+kbpcb_w = 88.5; kbpcb_d = 70.5; kbpcb_thickness = 1.51; // real, updated board
 
 kbpcb_standoffs = [
-  for (h = [ [84.000,-102.000,3.2],[186.000,-102.000,3.2],[186.000,-52.000,3.2],
-             [151.960,-42.500,3.2],[176.960,-42.500,3.2] ])
+  for (h = [ [163.275090,-42.745040,3.2],[83.000000,-32.000000,3.2],
+             [83.000000,-92.500000,3.2],[163.500000,-92.433792,3.2] ])
     [ kbpcb_pt(h[0],h[1])[0], kbpcb_pt(h[0],h[1])[1], h[2] ]
 ];
 
-pico_pos = kbpcb_pt(98.58, -53.97); // TODO verify USB-connector edge/orientation against real board
+pico_pos = kbpcb_pt(98.575, -53.97);
+
+// New on the updated board: 2 LEDs (D1/D2, 3mm round) and a tactile
+// button (SW1) needing case access -- per direction. R1/R2 are just their
+// current-limit resistors, no case feature needed.
+// REAL component data, measured off Coco_pico_keyb.stl (the stuffed board; same KiCad frame as the
+// STEP, Z=0 at the PCB bottom). LED/button X are the BODY centres, not the pad positions the earlier
+// numbers used (113.5 / 119.46 / 126.5) -- those were 1.1 / 1.3 / 2.3 mm off the real parts.
+kbpcb_led1_pos = kbpcb_pt(114.60, -30.0);  // D1  (body x 113.27..115.93)
+kbpcb_led2_pos = kbpcb_pt(120.73, -30.0);  // D2  (body x 119.23..122.24)
+kbpcb_button_pos = kbpcb_pt(128.75, -31.0); // SW1 (cap x 125.05..132.45, 7.4 wide, 6.9 tall)
+kbpcb_led_z = 5.43;       // LED lens centre above the PCB top
+kbpcb_btn_z = 3.49;       // button cap centre above the PCB top
+kbpcb_usb_x = 98.33;      // USB jack centre X (jack is 11.9 wide, 3.7 tall)
+kbpcb_usb_z = 1.93;       // USB jack centre above the PCB top
+kbpcb_comp_above = 8.62;  // TALLEST part above the PCB top (the 2.54mm headers)
+kbpcb_pin_below  = 2.4;   // pin tails below the PCB bottom
+kbpcb_edge_poke  = 0.33;  // the USB jack pokes this far past the board's USB edge
 
 // ============================================================================
 // GENERIC HELPERS
@@ -407,6 +455,34 @@ module louver_bank_vertical(n, slot_w, gap, run_len, cut_depth) {
 // MAIN (MOTHERBOARD) SHELL
 // ============================================================================
 
+/* [Keyboard shell -- from the hand-built "split key frame.scad"] */
+kb_w = 334;            // overall width  (kx)
+kb_d_key = 155;        // depth of the shell up to the keyboard's rear (the original frame's depth)
+// kb_extra_d / kb_d (depth added BEHIND the keyboard) are derived further down, next to the
+// board-A parameters they depend on -- kb_cap_h (below) does not depend on them, which is
+// what lets the main case's skirt be derived from it up here.
+kb_front_h = 14.7;     // shell height at the FRONT edge (the "bottom front height")
+kb_slope_deg = 8;      // keyboard-plane rise toward the back (15 was tried; 8 gets the overall height back)
+kb_feet = false;       // false: this shell sits directly on the desk (no stick-on feet), so its
+                       // base plane is new_foot_height BELOW the main case's floor plane --
+                       // lowers the whole keyboard relative to the main case's skirt
+kb_dz = kb_feet ? 0 : new_foot_height; // kb-frame z = main-frame z + kb_dz
+kb_wall = 3;
+kb_corner_r = 8;
+kb_base_t = 3;         // floor slab everywhere (was 5 under the hollows / 3 only under the board:
+                       // the thinner deck under the PCB worked, so the whole floor is that now)
+kb_pcb_w = 316;        // stock keyboard PCB pocket
+kb_pcb_d = 124;
+// The top stops rising here (flat shelf behind the keyboard) -- the height the
+// shell would have had at its original depth, so kb_extra_d adds room, not height.
+kb_cap_h = kb_front_h + tan(kb_slope_deg) * (kb_d_key - 2*kb_corner_r);
+kb_x0 = board_w/2 - kb_w/2;   // main-frame X of the keyboard's left edge (centered on the main case)
+// The main case's front skirt is derived from the keyboard: the keyboard's flat shelf top
+// (kb_cap_h, measured from ITS base = kb_dz below the main floor) meets the main case's
+// front skirt top flush. The floppy-bay stack rises by the same amount (see bay_face_z0)
+// so the ramp run and every bay Y position stay exactly as they were.
+kb_match_skirt = true;
+
 // ---- TOP SHELL STYLING: skirt + continuous slope, no flat "table" ----
 // Per direction: the front has NO flat plateau -- a short vertical "skirt"
 // (15-20mm) right where the top shell meets the bottom shell's parting
@@ -415,7 +491,10 @@ module louver_bank_vertical(n, slot_w, gap, run_len, cut_depth) {
 // needs to hold -- two side-by-side 3.5" floppy bays (see FLOPPY BAY below)
 // -- not an arbitrary styling constant like the old front_deck_h/
 // rear_tower_h were.
-top_skirt_h   = 8;    // vertical wall height above parting_h at the front edge -- reduced
+top_skirt_h_base = 8;
+top_skirt_h   = kb_match_skirt ? (kb_cap_h - kb_dz - parting_h) : top_skirt_h_base;
+                      // ^ was a flat 8: now matches the keyboard shell's flat shelf top (kb_match_skirt).
+                      // Vertical wall height above parting_h at the front edge -- reduced
                         // from 18 per direction ("straight up band interface to the base...
                         // can be reduced to 8mm")
 top_slope_deg = 25;   // front-to-back roof slope, measured from VERTICAL per
@@ -474,7 +553,7 @@ floppy_screw_front_offsets = [20 + m3_pilot_d/2, 79.2 + m3_pilot_d/2];
 floppy_screw_z_offsets = [4.2, 12.7];
 
 // ---- Tower height, driven by the bay stack (not picked by hand) ----
-bay_face_z0  = parting_h + 6 + 19.05;    // footer below the recessed face -- includes an
+bay_face_z0  = parting_h + 6 + 19.05 + (top_skirt_h - top_skirt_h_base); // rises with the skirt    // footer below the recessed face -- includes an
                                            // extra 3/4in (19.05mm) of clearance underneath
                                            // the bays per direction (was just 6mm); this
                                            // raises the whole bay assembly, and rear_tower_h
@@ -672,6 +751,61 @@ module main_top_edge_round_cut() {
     }
 }
 
+// Mirror of round_top_edge_x, for a wall where material/cavity is on the
+// Y < edge_y side instead of Y > edge_y (the front wall, where the
+// interior extends toward the REAR from there).
+module round_top_edge_x_neg(edge_y, r, x0, x1, z1) {
+    difference() {
+        translate([x0, edge_y-r, z1-r]) cube([x1-x0, r, r]);
+        translate([x0, edge_y-r, z1-r]) rotate([0,90,0]) cylinder(r=r, h=x1-x0);
+    }
+}
+
+// Small STRUCTURAL fillet at the INSIDE corner where the ceiling meets
+// the walls, all the way around -- per direction. Same notch-cube-minus-
+// cylinder technique as main_top_edge_round_cut() above (a true round,
+// not the hull()-based chamfer used elsewhere), just applied the other
+// way: this shape gets SUBTRACTED FROM THE CAVITY (see its use in
+// main_case_top(), added to the same protection union that already keeps
+// the floppy duct/roof-fill and topbottom boss footprints solid) rather
+// than from the outer solid, so removing it from the cavity is what
+// LEAVES the fillet's own material behind in the final shell -- the
+// opposite of cutting a fillet into already-solid material.
+//
+// The rear and front walls are each flat (a single z1 applies along
+// their whole run), but the side walls' own ceiling height follows the
+// sloped ramp -- swept in many small segments using local_wedge_h() at
+// each one (same principle as the corner boss's own slope-following
+// construction), staying purely algebraic to avoid the CGAL mesh-
+// robustness issues a real geometry intersection would risk here.
+ceiling_fillet_r = 3;
+module round_ceiling_edge_y_swept(edge_x, dir, r, y0, y1, h_rear, h_front, n = 100) {
+    step = (y1 - y0) / n;
+    for (i = [0 : n-1]) {
+        ys = y0 + i*step;
+        ye = ys + step + 1; // generous overlap between segments for a clean union
+        ym = ys + step/2;
+        z1 = local_wedge_h(ym, h_rear, h_front);
+        round_top_edge_y(edge_x, dir, r, ys, ye, z1);
+    }
+}
+module main_ceiling_fillet_protect() {
+    r = ceiling_fillet_r;
+    right_inner_x = -(case_margin - wall);
+    left_inner_x  = board_w + (case_margin - wall);
+    rear_inner_y  = -(rear_margin - wall);
+    front_inner_y = main_front_y - wall;
+    ceil_rear  = rear_tower_h - wall;
+    ceil_front = front_deck_h - wall;
+    // rear wall -- flat, entirely within the flat-roof zone
+    round_top_edge_x(rear_inner_y, r, right_inner_x - r, left_inner_x + r, ceil_rear);
+    // front wall -- flat at the skirt's own height
+    round_top_edge_x_neg(front_inner_y, r, right_inner_x - r, left_inner_x + r, ceil_front);
+    // side walls -- swept the full length, following the ramp's own slope
+    round_ceiling_edge_y_swept(right_inner_x, 1, r, rear_inner_y - r, front_inner_y + r, ceil_rear, ceil_front);
+    round_ceiling_edge_y_swept(left_inner_x, -1, r, rear_inner_y - r, front_inner_y + r, ceil_rear, ceil_front);
+}
+
 module main_top_outer_solid() {
     // Padded 2mm above the wedge block's own max height so the two solids
     // being intersected never share an exactly coincident flat top plane --
@@ -853,8 +987,12 @@ usbc_trigger_cut_h     = 7;
 usbc_trigger_cut_z     = 6;  // cutout vertical center above the floor
 usbc_trigger_board_w   = 22;
 usbc_trigger_board_d   = 22;
-usbc_trigger_boss_h    = 3;  // flush/low-profile, same reasoning as the kbpcb bosses
-usbc_trigger_hole_d    = 2.5;
+usbc_trigger_boss_h    = 6;  // was 3, raised +3mm per direction ("raised about 3mm
+                              // including taller standoff so I get better screw
+                              // grabbing... self tapping m3 is fine for that in all
+                              // conditions") -- same reasoning/precedent as the kbpcb
+                              // boss height increase above.
+usbc_trigger_hole_d    = m3_pilot_d; // self-tapping M3 confirmed fine here, per direction
 module main_usbc_trigger_cutout() {
     // Through the (bottom-shell) rear wall, at floor level -- the board
     // sits on its own low bosses (usbc_trigger_boss_h) just inside, so its
@@ -890,17 +1028,25 @@ module main_usbc_trigger_standoffs_holes() {
 // at the panel face to help guide the cartridge in.
 //
 // Per direction, the previous constant-110-wide-past-the-taper design was
-// "just a bit too wide" -- now a genuine funnel the whole way in: 110mm
-// at the panel's outer face, narrowing down to 108.5mm (0.5mm clearance)
-// right at CN1's own real position, then staying 108.5 the rest of the
-// way. See main_cart_slot_cut() below.
+// "just a bit too wide" -- now a genuine funnel the whole way in: was
+// 110mm at the panel's outer face, narrowing down to 108.5mm (0.5mm
+// clearance) right at CN1's own real position, then staying 108.5 the
+// rest of the way. See main_cart_slot_cut() below. Outer face further
+// tightened 110 -> 109.5 per direction ("still too much play on the cart
+// slot") -- this also narrows main_cart_guide_walls' inner span (derived
+// from cart_slot_surface_w), which is what actually registers the
+// cartridge side-to-side as it's pushed in, so this is the fix for
+// insertion wobble specifically (not the tighter 108.5 at CN1 itself,
+// unchanged, which was never the loose part).
 cart_slot_w                  = 108;  // real card width
 cart_slot_h                  = 23;
-cart_slot_connector_margin_w = 0.5;  // clearance right at the connector
+cart_slot_connector_margin_w = 0;    // clearance right at the connector -- 0: the funnel
+                                       // now tapers 109.5 (outer face) -> 108 (the card's
+                                       // own real width) at CN1, per direction
 cart_slot_margin_h           = 2;    // total height clearance -- reduced from 3 (nominal
                                        // height 26 -> 25) per direction, "the cart slot is
                                        // too tall"
-cart_slot_surface_w          = 110;  // width at the panel's own outer face
+cart_slot_surface_w          = 109.5;  // width at the panel's own outer face
 cart_slot_taper_grow_h       = 0;    // no vertical flare now -- was 6, but that made the
                                        // surface opening 32mm tall, part of what read as
                                        // "too tall"; height is just a flat 25mm the whole depth
@@ -946,7 +1092,8 @@ module main_connector_cutouts_top() {
         else if (kind == "slide_switch")
             rim_notch_y(x, -rear_margin, 10, 11, notch_depth); // SW3 -- stays sharp, per direction
         else if (kind == "reset_button")
-            rim_notch_y(x, -rear_margin, 8, 12, notch_depth, notch_r);
+            rim_notch_y(x, -rear_margin, 10.5, 12, notch_depth, notch_r); // SW2: 8x8 body + clearance; 10.5 wide because the
+                // 2mm corner rounding eats ~1.2mm per side at the top corners of a square body
         else if (kind == "cart_slot")
             main_cart_slot_cut();
         // "cart_slot" exits the RIGHT-SIDE panel (min X, post board_pt mirror, still case_margin), all others exit the REAR panel (min Y, now rear_margin)
@@ -973,8 +1120,8 @@ module main_usb_passthrough_front() {
     // main_support_beam()) beam and into the open kbpcb bay -- giving a
     // single clear corridor from the Pico's USB port to the panel. TODO:
     // true up 20x11 against the real coupler's actual housing dimensions.
-    translate([board_w*0.5, (main_front_y + 130)/2, parting_h*0.4])
-        rect_cutout(20, 11, main_front_y - 130 + case_margin*2); // depth along Y
+    translate([board_w*0.5, (main_front_y + 130)/2, kbpcb_screw_boss_h + kbpcb_thickness + kbpcb_usb_z])
+        rect_cutout(20, 11, main_front_y - 130 + case_margin*2); // depth along Y (centred on the real jack height)
 }
 
 module main_pizero_hdmi_mount() {
@@ -1183,15 +1330,34 @@ module main_floppy_bay_brackets() {
                                 cube([floppy_rail_t, band_y1 - band_y0, true_ceiling_z - fillet_h - bay_face_z0]);
                             // fillet: flares outward in Y (toward the band's own
                             // ends) as it rises into the last few mm below the
-                            // roof, widening the bonded area there
+                            // roof, widening the bonded area there.
+                            //
+                            // true_ceiling_z is the FLAT rear roof height --
+                            // valid for the band's own body (well within the
+                            // flat zone, Y <= main_break1_y), but the forward
+                            // band's own Y-range reaches right up near the
+                            // bulkhead, just past main_break1_y where the roof
+                            // actually starts sloping down. The flare's own
+                            // widened top (+fillet_grow past the band's own
+                            // edge) reached further into that sloped zone than
+                            // the band's straight sides did, poking through the
+                            // angled roof there -- per direction ("due to the
+                            // geometry of the angled face... narrow that
+                            // bracket"), same fillet on every rail position
+                            // since they all share this same forward Y range.
+                            // Clipped so the flare's own Y-reach never crosses
+                            // into the sloped zone, regardless of band_y1.
                             band_yc = (band_y0 + band_y1) / 2;
                             band_hw = (band_y1 - band_y0) / 2;
-                            hull() {
-                                translate([rail_x - floppy_rail_t/2, band_y0, true_ceiling_z - fillet_h])
-                                    cube([floppy_rail_t, band_y1 - band_y0, 0.01]);
-                                translate([rail_x - floppy_rail_t/2, band_yc - band_hw - fillet_grow, true_ceiling_z])
-                                    cube([floppy_rail_t, (band_hw + fillet_grow)*2, 0.01]);
-                            }
+                            flare_y0 = max(band_yc - band_hw - fillet_grow, floppy_rail_y0);
+                            flare_y1 = min(band_yc + band_hw + fillet_grow, main_break1_y - 1);
+                            if (flare_y1 > flare_y0)
+                                hull() {
+                                    translate([rail_x - floppy_rail_t/2, band_y0, true_ceiling_z - fillet_h])
+                                        cube([floppy_rail_t, band_y1 - band_y0, 0.01]);
+                                    translate([rail_x - floppy_rail_t/2, flare_y0, true_ceiling_z])
+                                        cube([floppy_rail_t, flare_y1 - flare_y0, 0.01]);
+                                }
                         }
                     }
                 }
@@ -1205,14 +1371,82 @@ module main_floppy_bay_brackets() {
         }
     }
 }
+// Small cross brace, rear band to the nearest duct wall -- per direction,
+// "all the drive brackets should have a small cross brace... except the
+// front ones, they are strong enough because they're attached to the
+// front [bulkhead]." Only the two rails that actually sit next to a real
+// duct wall get this (one per bay, the OUTER rail -- the inner rail of
+// each pair faces the open gap between the bays, nothing to brace
+// against there). Reaches halfway into the duct wall's own thickness --
+// enough for a real, solid connection without extending past the
+// wall's own protected footprint (main_floppy_bay_duct_protect) into
+// unprotected, potentially-hollow cavity territory.
+module main_floppy_bay_bracket_cross_braces() {
+    true_ceiling_z = rear_tower_h - wall;
+    band_half_w = 12.7;
+    bulkhead_back_y = floppy_notch_y0 - floppy_bulkhead_t;
+    rear_off = max(floppy_screw_front_offsets);
+    brace_w = 4;
+    for (i = [-1, 1]) {
+        bay_cx = board_w/2 + i*(floppy_w+floppy_bay_gap)/2;
+        for (side = [-1, 1]) {
+            if (i*side == 1) { // outer rail only -- faces a real duct wall
+                rail_x = bay_cx + side*(floppy_w/2 + floppy_fit_clear_w/2 + floppy_rail_t/2);
+                wall_x = (i < 0)
+                    ? board_w/2 - floppy_face_w/2 - floppy_duct_wall_t/2
+                    : board_w/2 + floppy_face_w/2 + floppy_duct_wall_t/2;
+                screw_y = floppy_notch_y0 - rear_off;
+                band_y0 = max(screw_y - band_half_w, floppy_rail_y0);
+                band_y1 = min(screw_y + band_half_w, bulkhead_back_y - 1);
+                if (band_y1 - band_y0 > 4) {
+                    brace_y0 = max(screw_y - brace_w/2, band_y0);
+                    brace_y1 = min(screw_y + brace_w/2, band_y1);
+                    translate([min(rail_x, wall_x), brace_y0, bay_face_z0])
+                        cube([abs(wall_x - rail_x), brace_y1 - brace_y0, true_ceiling_z - bay_face_z0]);
+                }
+            }
+        }
+    }
+}
 
+// Cross web between the two INNER rear rails (the ones facing the gap between the bays) -- per direction,
+// "the back two middle drive brackets don't have cross bracing." The outer rails already get
+// main_floppy_bay_bracket_cross_braces() out to the duct walls; the inner pair had nothing tying them together.
+// Now a small vertical web: floppy_web_h (10mm) tall, floppy_web_w (3mm) thick, spanning the open gap between
+// the two rails (its ends sink into each rail's thickness for a real fuse), sitting at the MIDDLE of the bracket
+// -- centred along the rear band (on the drive screw's own Y) and at mid-height of the rail. Mid-height also keeps
+// it well above the drive-screw holes (near the rail's free end), so a screwdriver still reaches them from the gap.
+floppy_web_w = 3;     // thickness (Y)
+floppy_web_h = 10;    // height (Z)
+module main_floppy_bay_center_web() {
+    true_ceiling_z = rear_tower_h - wall;
+    screw_y = floppy_notch_y0 - max(floppy_screw_front_offsets);      // middle of the rear band
+    rail_h  = true_ceiling_z - bay_face_z0;                            // rail height, free end -> roof
+    // inner rail centres sit floppy_bay_gap/2 - fit_clear_w/2 - rail_t/2 either side of board_w/2
+    rail_off = floppy_bay_gap/2 - floppy_fit_clear_w/2 - floppy_rail_t/2;
+    translate([board_w/2 - rail_off, screw_y - floppy_web_w/2, bay_face_z0 + (rail_h - floppy_web_h)/2])
+        cube([2*rail_off, floppy_web_w, floppy_web_h]);
+}
+
+// BUG FIX per direction ("the screw holes are too big for mounting the pcb
+// with m3 self tapping screws"): these two used to pass s[2] -- the REAL
+// motherboard's own physical mounting-hole diameter (4.0mm/3.5mm, fixed by
+// the actual board, see board_standoffs above) -- straight through as the
+// SCREW PILOT size too. Those are two different things: the board's real
+// hole is just clearance for the screw's shaft through the PCB itself, not
+// a spec for the pilot this design drills into its own printed post. That
+// conflation is what produced an oversized (3.3-3.8mm) pilot instead of a
+// proper M3 one. Now: pilot comes from m3_pilot_d (screw_mount_type-aware)
+// like everywhere else in the file; s[2] still sets the post's own OD via
+// the od= override, unchanged from the implicit d=hole_d+4.0 these used to
+// get, so the posts themselves aren't resized, just their pilot holes.
 module main_standoffs_solid() {
     for (s = board_standoffs)
-        standoff_peg_solid(s[0], s[1], s[2], standoff_height);
+        standoff_peg_solid(s[0], s[1], m3_pilot_d, standoff_height, od = s[2] + 4.0);
 }
 module main_standoffs_holes() {
     for (s = board_standoffs)
-        standoff_peg_hole(s[0], s[1], s[2], standoff_height);
+        standoff_peg_hole(s[0], s[1], m3_pilot_d, standoff_height);
 }
 
 // X-direction counterpart to cross_brace_wedge() (see main_beam_cross_braces
@@ -1249,10 +1483,20 @@ module main_standoffs_braces() {
 // their existing wall-brace above -- across the raceway instead -- for
 // more strength. Full-height gusset (floor up to Z12, no floating gap
 // underneath -- per direction, "I don't want to have space underneath
-// that new brace"), EXCEPT directly over the raceway's own open channel
-// (Z0-5 there only), so the hollow cable path stays clear -- everywhere
-// else, including over the raceway's solid legs, it's a real floor-to-12
-// wall, not just a thin slab bridging across.
+// that new brace"), EXCEPT directly over the raceway's own open channel,
+// so the hollow cable path stays clear -- everywhere else, including over
+// the raceway's solid legs, it's a real floor-to-12 wall, not just a thin
+// slab bridging across.
+//
+// The channel cut used to stop at Z5 (raceway_h), leaving the brace's
+// upper portion (Z5-12) as a short solid bridge OVER the open channel --
+// per direction, "the cross brace on the raceway pokes into the raceway
+// itself, and that little bit needs support." Extended to the brace's
+// full height instead: this fully separates the brace into two stubs
+// where it crosses the channel, but each stub still sits on the case's
+// own continuous floor just outside the raceway's own narrow floor cut
+// (see main_cable_raceway_floor_cut), so neither one goes disconnected/
+// floating -- confirmed via the STL connectivity check.
 cn1_raceway_brace_w  = 3;
 cn1_raceway_brace_h  = 12;
 cn1_raceway_brace_x1 = 44; // past the raceway's far leg (raceway_x+~4) with clearance --
@@ -1271,7 +1515,7 @@ module main_cn1_raceway_braces() {
                 translate([s[0] - 1, s[1] - cn1_raceway_brace_w/2, 0])
                     cube([cn1_raceway_brace_x1 - (s[0] - 1), cn1_raceway_brace_w, cn1_raceway_brace_h]);
                 translate([raceway_x - raceway_w/2 - 0.5, s[1] - cn1_raceway_brace_w/2 - 1, -1])
-                    cube([raceway_w + 1, cn1_raceway_brace_w + 2, raceway_h + 1]);
+                    cube([raceway_w + 1, cn1_raceway_brace_w + 2, cn1_raceway_brace_h + 2]);
             }
 }
 
@@ -1536,30 +1780,36 @@ module main_cn4_rib() {
 // a new origin instead of the keyboard tray's own kb_pcb_origin. SCREW
 // BOSSES (self-tapping pilot, like the top/bottom shell fasteners), not
 // plain standoff pegs, per explicit correction.
-// Position: kept entirely BEHIND the main support beam in Y (front edge at
-// Y=145.5, beam is at Y=149.26) so only the one cross brace needed
-// removing, not the beam itself. X is chosen so the Pico's USB connector
-// (pico_pos, real data from Coco_pico_keyb.step) lines up with the
-// EXISTING front-panel USB passthrough cutout (main_usb_passthrough_front,
-// at the middle of the front wall, X=board_w/2=140) -- per direction, "USB
-// poking out the middle front." The board itself stays clear of the wall;
-// a short cable/coupler (same idea as the passthrough cutout's own name)
-// bridges the remaining ~25mm gap from the Pico to the panel -- standard
-// practice, and avoids having to flip the board's orientation to get the
-// Pico flush against the wall, which would instead push its OTHER mounting
-// holes (some closer to local Y=0 than the Pico is) past the wall entirely.
-main_kbpcb_origin = [board_w/2 - pico_pos[0], 65];
+// Position: X is chosen so the Pico's USB connector (pico_pos, real data
+// from Coco_pico_keyb.step) lines up with the EXISTING front-panel USB
+// passthrough cutout (main_usb_passthrough_front, at the middle of the
+// front wall, X=board_w/2=140) -- per direction, "USB poking out the
+// middle front." Y is now driven off kbpcb_pt's corrected (proper,
+// non-mirrored) orientation -- per direction ("aligned to the front edge
+// ... USB connector accessible, LEDs visible, button protrudes") -- so the
+// board's panel edge (local Y=kbpcb_d, where the USB end of the Pico and
+// D1/D2/SW1 all cluster) sits just inside the front wall's inner face
+// instead of ~40-65mm back from it. kbpcb_front_clearance is the only
+// slack left between that edge and the wall.
+kbpcb_front_clearance = 3;
+// board_d + case_margin here is the same value as main_front_y, computed
+// locally (not by referencing main_front_y itself) because main_front_y is
+// a top-level variable defined much later in file order -- referencing it
+// here would silently evaluate to undef (same class of ordering pitfall as
+// the raceway comment above about parting_h/pcb_edge_lip_height).
+main_kbpcb_origin = [board_w/2 - pico_pos[0],
+                      (board_d + case_margin) - wall - kbpcb_front_clearance - kbpcb_d];
 kbpcb_screw_boss_d = 7;
 kbpcb_screw_pilot_d = m3_pilot_d; // self-tap/heat-set pilot for the board's 3.2mm holes
-kbpcb_screw_boss_h = 3; // flush/low-profile -- was 10 (a tall freestanding
-                         // pillar); per direction, these sit low to the
-                         // floor instead. Still tall enough for a couple mm
-                         // of real self-tap thread engagement.
-// Reuses all 5 of the board's REAL mounting holes (kbpcb_standoffs) -- this
+kbpcb_screw_boss_h = 6; // was 3, raised per direction ("2 to 3 more mm height...
+                         // for a bit more screw grab") -- still low/flush
+                         // compared to the original 10mm freestanding pillar,
+                         // just with more real self-tap thread engagement now.
+// Reuses all 4 of the board's REAL mounting holes (kbpcb_standoffs) -- this
 // is the actual physical Pico keyboard-controller PCB's own hole pattern,
 // so every hole should get a boss unless there's a real fit conflict.
 kbpcb_boss_brace_w = 4;
-kbpcb_boss_brace_run = 5; // short -- these bosses are only 3mm tall to begin with
+kbpcb_boss_brace_run = 5; // short -- these bosses are only 6mm tall to begin with
 module main_kbpcb_mount() {
     for (s = kbpcb_standoffs) {
         x = main_kbpcb_origin[0] + s[0];
@@ -1575,6 +1825,47 @@ module main_kbpcb_mount() {
         // since none of these bosses sit next to one.
         cross_brace_wedge(x, kbpcb_boss_brace_w, y, y - kbpcb_boss_brace_run, kbpcb_screw_boss_h);
     }
+}
+
+// D1/D2 (LEDs) and SW1 (button) access -- per direction, "It also has 2 leds
+// and a button that we'll need access to." CORRECTED per direction: all
+// three are mounted RIGHT-ANGLE (90 degrees) on the board, so they don't
+// point up at the roof at all -- they point OUT toward the board's front
+// (panel) edge, at a height above the PCB surface (their legs bend up off
+// the pad position, then turn horizontal). So the access cut is a
+// HORIZONTAL hole through the FRONT WALL, not a vertical one through the
+// roof, centered 4mm above the PCB's top surface (per direction, "mounted
+// 4mm above the plane of the pcb"), running from just behind each
+// component's pad position (kbpcb_led1_pos etc -- real STEP data, the
+// pad/leg location, not the bent-over head) out through the wall.
+// LED holes shrunk 6 -> 4mm per direction ("not enough material there
+// currently") -- the real pad spacing is tight (D1/D2 ~5.96mm
+// center-center, D2/SW1 ~7.04mm), so uniform 6mm holes left D1+D2 fully
+// merged and D2/SW1 down to ~1mm of wall between them. At 4mm LED holes
+// there's a real ~2mm web on both sides again. Button stays 6mm (needs
+// room for the actual plunger, per the earlier "button shaft protrudes"
+// direction) -- it's the SW1/D2 gap that benefits most since D2 is now
+// the smaller of that pair.
+kbpcb_led_access_d = 4.4;    // LED body ~3.4 + clearance
+kbpcb_button_access_d = 6;   // SW1 (keyboard PCB button): a small round hole over the middle of its 7.4 x 6.9 cap
+kbpcb_pcb_top_z = kbpcb_screw_boss_h + kbpcb_thickness; // top surface of the mounted PCB
+module main_kbpcb_led_button_access() {
+    // board_d + case_margin here is the same value as main_front_y, computed
+    // locally rather than referencing main_front_y itself -- see the same
+    // ordering note on main_kbpcb_origin above.
+    front_wall_outer_y = board_d + case_margin;
+    for (p = [kbpcb_led1_pos, kbpcb_led2_pos]) {
+        x = main_kbpcb_origin[0] + p[0];
+        y0 = main_kbpcb_origin[1] + p[1] - 2; // start a couple mm behind the pad, safely inside the cavity
+        translate([x, y0, kbpcb_pcb_top_z + kbpcb_led_z])
+            rotate([-90, 0, 0])
+                cylinder(d = kbpcb_led_access_d, h = (front_wall_outer_y + 2) - y0);
+    }
+    // button: small round hole centred on the REAL cap position (x 128.75, 3.49 above the PCB top)
+    b = kbpcb_button_pos;
+    translate([main_kbpcb_origin[0] + b[0], main_kbpcb_origin[1] + b[1] - 2, kbpcb_pcb_top_z + kbpcb_btn_z])
+        rotate([-90, 0, 0])
+            cylinder(d = kbpcb_button_access_d, h = (front_wall_outer_y + 2) - (main_kbpcb_origin[1] + b[1] - 2));
 }
 
 // Cable raceway module bodies live here, but the raceway_x/y0/y1/len
@@ -1720,15 +2011,35 @@ module main_cart_slot_support() {
 // still 96, sized against a stale 92mm slot-width placeholder from
 // before the real 108mm cartridge dimension was known, so it was
 // actually narrower than the opening itself.
+// BUG FIXED (found by measuring the exported STL, not the code): the walls used to be
+// CENTERED at +-(surface_w + 2t)/2, which puts their INNER faces at +-(surface_w + t)/2
+// -- a 112mm gap for a 109.5 opening (the comment above claimed it matched; it never did).
+// Now the INNER faces are placed exactly, and they TAPER with the slot's own funnel:
+// cart_slot_surface_w wide where the wall meets the platform, narrowing to the card's
+// real width (cart_slot_w + cart_slot_connector_margin_w) right at CN1 -- the same
+// line main_cart_slot_cut() follows through the top shell. Walls keep a constant
+// cart_guide_t thickness measured outward from that inner face.
 cart_guide_h    = 18;
 cart_guide_t    = 2.5;
-cart_guide_span = cart_slot_surface_w + 2*cart_guide_t;
+function cart_gap_at(x) =
+    let (wall_x = -case_margin, x1 = cn1_xy()[0],
+         w1 = cart_slot_w + cart_slot_connector_margin_w)
+    cart_slot_surface_w - (cart_slot_surface_w - w1) * (x - wall_x) / (x1 - wall_x);
+// One guide wall's plan-view shape (side = +1 / -1 about the slot centreline).
+module cart_guide_2d(side) {
+    x0 = -(case_margin - wall);   // inner face of the side wall
+    x1 = cn1_xy()[0];
+    cy = cn1_xy()[1];
+    g0 = cart_gap_at(x0)/2; g1 = cart_gap_at(x1)/2;
+    if (side > 0)
+        polygon([[x0, cy+g0], [x1, cy+g1], [x1, cy+g1+cart_guide_t], [x0, cy+g0+cart_guide_t]]);
+    else
+        polygon([[x0, cy-g0-cart_guide_t], [x1, cy-g1-cart_guide_t], [x1, cy-g1], [x0, cy-g0]]);
+}
 module main_cart_guide_walls() {
-    xy = cn1_xy();
-    inner_wall_x = -(case_margin - wall);
     for (side = [-1, 1])
-        translate([inner_wall_x, xy[1] + side*cart_guide_span/2 - cart_guide_t/2, standoff_height])
-            cube([xy[0] - inner_wall_x, cart_guide_t, cart_guide_h]);
+        translate([0, 0, standoff_height])
+            linear_extrude(height = cart_guide_h) cart_guide_2d(side);
 }
 
 // CN3 (RGB, DIN-8 likely) is documented as bottom-mounted on the PCB. Per
@@ -2000,7 +2311,7 @@ module main_lip_socket() {
     }
 }
 
-magnet_d = 6; magnet_h = 2.5; // standard 6x2.5mm disc magnets
+magnet_d = 6; magnet_h = 3;   // 6x3mm disc magnets (was 6x2.5) -- drives BOTH shells' pockets
 // Skin of solid plastic left OVER each magnet pocket instead of cutting
 // straight through to the outer face -- per direction, so the holes
 // aren't visible from outside. Thin enough that the magnet still pulls
@@ -2032,7 +2343,17 @@ magnet_bore_len = magnet_pad_extra + wall + 5; // generous -- see note above
 // brace (X ~249.2-252.2), AND main_usb_passthrough_front() (X 130-150,
 // same wall, same general Z band) -- the first fix (150) sat right on
 // that cutout's own edge, confirmed overlapping it.
-main_magnet_x = [30, 90, 165, 220];
+// X=165 relocated -> 265 per direction ("one of the magnet mounts on the
+// front is right where an LED hole is from the keyboard controller...
+// move it close to the front left corner") -- 165 sat right in the
+// LED2/button cluster (X 152-171, see main_kbpcb_led_button_access above),
+// both at the same wall and the same Z band (parting_h/2 here vs
+// kbpcb_access_z there, close enough to collide). 265 sits in the clear
+// gap between the "short stub's brace" (ends ~252.2) and the left-front
+// topbottom screw boss/brace (starts ~279.17) -- checked clear of both.
+main_magnet_x = [30, 62, 220, 265];   // 90 -> 62: with the keyboard's back wall right up at the PCB, X=90 (kb kx=217)
+                                      // lands directly behind board A, where the wall is only 3mm thick. 62 sits clear
+                                      // of the board's footprint (X 69..162) and of the beam brace at X 54.5..57.5's bore path.
 module main_magnet_pads() {
     if (magnet_pad_extra > 0) {
         for (x = main_magnet_x)
@@ -2051,6 +2372,18 @@ module main_magnet_pockets() {
     for (x = main_magnet_x)
         translate([x, main_front_y - magnet_face_t - magnet_bore_len, parting_h/2])
             rotate([-90,0,0]) cylinder(d = magnet_d + 0.2, h = magnet_bore_len);
+}
+
+// keyboard_attached: instead of magnets, 3 M3 screws clamp the keyboard shell
+// on. Driven from INSIDE this case (top shell off): through these clearance
+// holes in the front wall and into pilots bored from the keyboard shell's back
+// face (kb_bolt_pilots()) at the same X/Z as the magnets would have been.
+// The keyboard-side position that falls inside its board-A bay is skipped
+// (that wall is only kb_wall thick), see kb_bolt_xs().
+module main_kb_bolt_holes() {
+    for (x = kb_bolt_xs())
+        translate([x, main_front_y - wall - 1, parting_h/2])
+            rotate([-90,0,0]) cylinder(d = 3.4, h = wall + 2);
 }
 
 // ---- TOP/BOTTOM fastening ----
@@ -2132,79 +2465,74 @@ main_topbottom_screw_positions = [
     for (p = main_topbottom_screw_positions_raw) if (!main_screw_pos_conflicts_bay(p)) p
 ];
 
-// Shields each boss's own footprint from the general inner-cavity cut --
-// per direction ("the back right standoff got eaten"). Empirically this
-// was a CGAL boolean robustness issue, not a real geometric conflict: the
-// outer solid and the cavity cut BOTH had material at the right-rear
-// boss's position (as expected -- that's an ordinary hollow-shell area),
-// the boss's own hull was independently solid there too, but the union of
-// (outer-cavity) with the boss still came back empty at that spot.
-// Protecting the footprint from the cavity cut in the first place
-// sidesteps the union causing trouble entirely -- same technique as
-// main_floppy_bay_duct_protect(). Applied to all 4 corners for safety,
-// even though only the right-rear one was confirmed broken -- shielding
-// a footprint that was never actually hollow there is a no-op.
-module main_topbottom_screw_boss_top_protect() {
-    boss_shield_r = 6; // a bit more than the boss's own 4mm radius, for margin
-    for (p = main_topbottom_screw_positions)
-        translate([p[0], p[1], parting_h - 2])
-            cylinder(r = boss_shield_r, h = rear_tower_h);
+// TOP SCREW BOSSES (heat-set inserts), rebuilt per direction: "just enough for the screw support, a
+// cylinder, with a small bridge to the nearby side if needed for strength."
+//
+// They used to run from the parting line ALL the way up to the roof (a ~90mm slender column now
+// that the tower is tall) wrapped in a fat solid "protect" shield + brace blocks -- the "pillar
+// object". Now each is just:
+//   * a short cylinder rising from the parting line (top_boss_h; clipped so it can never reach the
+//     roof, even where the ramp is low), with a 45deg chamfer on its free end so it prints without
+//     support whichever way up the top is printed;
+//   * a thin rib (top_boss_brace_w) from the cylinder to the nearest side wall, and -- in the flat
+//     rear zone -- to the rear wall, as tall as the cylinder. The right-rear boss skips the side
+//     rib: that corridor belongs to the bottom shell's cart guide wall.
+// The heat-set pilot (top_boss_insert_d) is cut LAST (see main_topbottom_screw_boss_top_holes()).
+top_boss_d          = 9;     // OD: 2.5mm of wall around a 4.0mm insert hole
+top_boss_h          = 16;    // above the parting line
+top_boss_chamfer    = 3.5;   // 45deg on the free end
+top_boss_brace_w    = 3;     // rib thickness
+top_boss_insert_d   = 4.0;   // heat-set insert bore (M3 inserts). Independent of screw_mount_type, which
+                             // still governs the bottom shell's board standoffs etc.
+top_boss_insert_depth = 8;   // insert bore depth from the parting line (insert ~5.7mm + room)
+function main_topbottom_is_rr(p) =
+    (p[0] == main_topbottom_screw_rr_x && p[1] == main_topbottom_screw_rr_y);
+// boss height, never reaching the local roof underside (matters on the low front ramp)
+function top_boss_h_at(p) = min(top_boss_h,
+    local_wedge_h(p[1] + top_boss_d/2, rear_tower_h - wall, front_deck_h - wall) - parting_h - 0.8);
+module main_topbottom_screw_boss_top_braces() {
+    right_inner_x = -(case_margin - wall);
+    left_inner_x  = board_w + (case_margin - wall);
+    rear_inner_y  = -(rear_margin - wall);
+    sink = 0.4;   // ribs sink a hair into the wall so they fuse
+    for (p = main_topbottom_screw_positions) {
+        hb = top_boss_h_at(p) - top_boss_chamfer;
+        wall_x = p[0] < board_w/2 ? right_inner_x : left_inner_x;
+        if (!main_topbottom_is_rr(p))
+            translate([min(wall_x - (wall_x < p[0] ? sink : 0), p[0]), p[1] - top_boss_brace_w/2, parting_h - 0.01])
+                cube([abs(wall_x - p[0]) + sink, top_boss_brace_w, hb]);
+        if (p[1] <= main_break1_y)
+            translate([p[0] - top_boss_brace_w/2, rear_inner_y - sink, parting_h - 0.01])
+                cube([top_boss_brace_w, abs(p[1] - rear_inner_y) + sink, hb]);
+    }
+}
+
+// Heat-set bore + cone recess, cut LAST (see main_case_top()), after every solid that could
+// otherwise fill them back in has been unioned -- the same rule main_standoffs_holes() and
+// main_topbottom_screw_boss_bottom_holes() follow.
+module main_topbottom_screw_boss_top_holes() {
+    for (p = main_topbottom_screw_positions) {
+        translate([p[0], p[1], parting_h - 1]) cylinder(d = top_boss_insert_d, h = top_boss_insert_depth + 1);
+        translate([p[0], p[1], parting_h - 0.01])
+            cylinder(d1 = topbottom_cone_base_d, d2 = topbottom_cone_top_d, h = topbottom_cone_h + 0.01);
+    }
+}
+// The cart guide walls (bottom shell) stand up into the top shell's interior;
+// nothing of the top shell may occupy their volume (+ a hair of clearance).
+module main_cart_guide_top_clearance() {
+    c = 0.4;
+    for (side = [-1, 1])
+        translate([0, 0, standoff_height - c])
+            linear_extrude(height = cart_guide_h + 2*c) offset(delta = c) cart_guide_2d(side);
 }
 
 module main_topbottom_screw_boss_top() {
-    // Each boss spans the FULL available height at its own Y, from the
-    // parting-line rim up to the underside of the roof there (the roofline
-    // varies with Y across the wedge/ramp) -- a boss that doesn't actually
-    // reach the roof is structurally disconnected from the shell (this bit
-    // us once already: floating pegs with no roof contact).
-    //
-    // Slanted-top boss, following the wedge's own local slope instead of a
-    // single flat height evaluated at the boss's own center Y -- the
-    // front-corner bosses sit deep in the steep ramp (main_front_y - 6),
-    // where the roof height changes by well over a boss-diameter's worth
-    // across just the boss's own 8mm footprint; a flat top there always
-    // overshot the actual (lower, closer to the front) roof on the boss's
-    // front-facing side, poking out past it (per direction, "protruding
-    // slightly from the front").
-    //
-    // Tried intersecting a tall cylinder with the real wedge geometry
-    // (y_wedge_block) first -- geometrically correct, but produced
-    // degenerate sliver fragments right at the front corners regardless of
-    // wedge X-range or cylinder tessellation: a CGAL boolean robustness
-    // issue against that mesh's own hull()-based construction, not
-    // something fixable by nudging parameters. Sidestepped entirely by not
-    // doing a mesh intersection at all -- local_wedge_h() is a pure
-    // algebraic function (no geometry, no tessellation to collide with),
-    // so hull()ing the boss's own bottom disk against a ring of points
-    // sampled around its top rim (each at that exact point's own
-    // local_wedge_h() height) gives the same correctly-slanted shape with
-    // no mesh-on-mesh interaction to go wrong.
-    boss_d = 8;
-    boss_r = boss_d/2;
-    rim_n = 16;
-    pilot_depth = 12; // fixed screw-purchase depth (plenty for an M3 self-tap) -- not the
-                        // full boss height; keeps the pilot hole well clear of the sloped
-                        // top so it can't pinch the remaining wall down to nothing there
     for (p = main_topbottom_screw_positions) {
-        difference() {
-            hull() {
-                translate([p[0], p[1], parting_h]) cylinder(d = boss_d, h = 0.01);
-                for (i = [0:rim_n-1]) {
-                    theta = i*360/rim_n;
-                    rim_x = p[0] + boss_r*cos(theta);
-                    rim_y = p[1] + boss_r*sin(theta);
-                    rim_z = local_wedge_h(rim_y, rear_tower_h - wall, front_deck_h - wall);
-                    translate([rim_x, rim_y, rim_z]) sphere(r = 0.6);
-                }
-            }
-            translate([p[0], p[1], parting_h - 1]) cylinder(d = m3_pilot_d, h = pilot_depth + 1); // self-tap pilot
-            // conical recess, mates with the raised cone tip on the bottom
-            // shell's own boss (main_topbottom_screw_boss_bottom_solid) --
-            // per direction, a self-aligning registration feature so the
-            // two halves nest together as the case closes, not just a
-            // flat screw boss meeting a flat screw boss.
-            translate([p[0], p[1], parting_h - 0.01])
-                cylinder(d1 = topbottom_cone_base_d, d2 = topbottom_cone_top_d, h = topbottom_cone_h + 0.01);
+        hb = top_boss_h_at(p);
+        translate([p[0], p[1], parting_h - 0.01]) {
+            cylinder(d = top_boss_d, h = hb - top_boss_chamfer);
+            translate([0, 0, hb - top_boss_chamfer - 0.01])
+                cylinder(d1 = top_boss_d, d2 = top_boss_d - 2*top_boss_chamfer, h = top_boss_chamfer + 0.01);
         }
     }
 }
@@ -2323,6 +2651,9 @@ module main_case_bottom() {
                 if (!keyboard_attached && lip_socket_tabs_enabled) main_lip_socket();
             }
             main_usb_passthrough_front();
+            main_kbpcb_led_button_access(); // front wall at kbpcb PCB height (~22mm
+                // below parting_h=21.85) is BOTTOM-shell material, not top-shell --
+                // this cut belongs here, not in main_case_top()
             main_cn3_access_cut();
             main_cable_raceway_end_cuts();
             main_cable_raceway_floor_cut();
@@ -2336,6 +2667,7 @@ module main_case_bottom() {
             main_topbottom_screw_boss_bottom_holes(); // same reason, cut last
             main_floor_vents();
             if (!keyboard_attached) main_magnet_pockets();
+            if (keyboard_attached) main_kb_bolt_holes();
         }
         // main_cn3_shelf() / main_cn3_pedestal() / main_cn3_new_standoff()
         // added here, same reasoning as main_cable_raceway() above --
@@ -2377,15 +2709,18 @@ module main_case_top() {
                         union() {
                             main_floppy_bay_duct_protect();
                             main_floppy_bay_roof_fill_protect();
-                            main_topbottom_screw_boss_top_protect();
+                            main_ceiling_fillet_protect();
                         }
                     }
                 }
                 main_topbottom_screw_boss_top();
+                main_topbottom_screw_boss_top_braces();
             }
             main_louvers();
             main_connector_cutouts_top();
             main_floppy_bay_notch();
+            main_topbottom_screw_boss_top_holes();   // last: see its comment
+            main_cart_guide_top_clearance();
         }
         // Bulkhead and brackets added OUTSIDE the difference() above -- same
         // reasoning as main_cable_raceway() in main_case_bottom(): they're
@@ -2396,6 +2731,8 @@ module main_case_top() {
             main_floppy_bay_bulkhead_holes();
         }
         main_floppy_bay_brackets();
+        main_floppy_bay_bracket_cross_braces();
+        main_floppy_bay_center_web();
     }
 }
 
@@ -2471,128 +2808,475 @@ module main_case_top_right() {
     }
 }
 
+// Board A (Pico, coco-keyboard -> USB), rotated 180deg from board B in the main case.
+kbA_setback = kbpcb_edge_poke + 0.7;   // board's USB edge -> the inner face of the wall that sits AT the PCB's edge. The
+                       // USB jack pokes 0.33mm past the edge, so this leaves 0.7mm to the jack.
+// Layout along ky (front -> back):  ... keyboard pocket | board A (where headroom under the keyboard plane puts
+// it) | 1mm | WALL (kb_wall) | CABLE BAY (kb_cable_bay_d, open at the back face toward the computer) |.
+// The shell's roof carries on over the bay: that overhang hides the cable while docked, and the open bay gives
+// the plug that sticks out of the main case's front wall somewhere to go as the keyboard is brought up.
+kb_cable_bay_d = 20;   // depth of the bay behind the PCB-edge wall; also sets the plug-to-plug distance (see echo)
+kb_bay_x0 = 95;        // bay X extent: from the coil space beside the board ...
+kb_bay_x1 = 215;       //   ... across the USB jack, LEDs and button (kx ~ 158..202)
+kbA_flipped = false;   // true: board mounted UPSIDE DOWN (components hang below the PCB, bare
+                       // face up) -> almost no headroom needed under the keyboard, but the
+                       // bay needs depth below the PCB instead (see the echo() lines)
+kbA_flip_pcb_z = kb_base_t + kbpcb_comp_above + 0.5;   // PCB height when flipped: real component depth (8.6) + clearance
+kbA_floor_z = kb_base_t; // bay floor == the general floor now (3mm)
+kbA_pcb_z = kbA_flipped ? kbA_flip_pcb_z : kbpcb_screw_boss_h; // PCB slab bottom above the shell
+                       // base plane (upright default 6 = board B's height above the main floor)
+kb_usb_w = 20; kb_usb_h = 11; // same opening size as main_usb_passthrough_front()
+// Headroom the board needs under the keyboard PCB plane (whose height above the base at the board's front
+// edge is ky*tan(slope)): the PCB plus whatever stands on it (upright: the tallest header; flipped: only a
+// screw head). It sets how far back the board sits (kbA_edge_ky, below) -- shallower slopes push it back.
+kbA_above_clear = kbA_flipped ? 3 : (kbpcb_comp_above + 0.9);   // mm needed above the PCB slab, under the keyboard PCB
+                                                                // (upright: the REAL tallest part, 8.62, plus 0.9)
+// Board A's back (USB) edge: the board sits under the keyboard plane, whose height above the base at the board's
+// FRONT edge is ky*tan(slope). That front edge has to be far enough back to clear the PCB plus the tallest part
+// (upright: the real 8.62mm headers; flipped: only a screw head) -- so shallower slopes push the board back.
+// Never further forward than the original frame's rear rim (kb_d_key - kb_wall - kbA_setback).
+kbA_edge_ky = max(ceil((kbA_pcb_z + kbpcb_thickness + kbA_above_clear) / tan(kb_slope_deg)) + kbpcb_d,
+                  kb_d_key - kb_wall - kbA_setback);
+kbA_wall_y0 = kbA_edge_ky + kbA_setback;      // inner face of the PCB-edge wall
+kbA_wall_y1 = kbA_wall_y0 + kb_wall;          // its back face = start of the cable bay
+kb_d = kbA_wall_y1 + kb_cable_bay_d;          // overall depth (ky)
+kb_extra_d = kb_d - kb_d_key;
+kb_rear_h = kb_front_h + tan(kb_slope_deg) * (kb_d - 2*kb_corner_r);   // plane height at the rear cylinders (cutting height)
+kbA_back_lips = false;  // the two hanging lip columns over the board's back corners (removed: they
+                        // looked odd and printed as floating pillars). The board is held by its two
+                        // front screws; the back corners just rest on low ledges.
+kb_bolt_depth = 12;    // M3 pilot depth into the keyboard's back rim (keyboard_attached)
+
 // ============================================================================
-// KEYBOARD SHELL  (mechanical keyboard dims are PLACEHOLDER — see header)
+// KEYBOARD SHELL -- adapted from the hand-built "split key frame.scad"
 // ============================================================================
-kb_outer_w = keyboard_unit_w + 2*(keyboard_deck_margin);
-kb_outer_d = keyboard_unit_d + 2*(keyboard_deck_margin);
-kb_shell_h = keyboard_unit_h + wall*2 + 6;
+// REAL frame for this shell (NOT the tilted frame the original file was
+// authored in -- there the top opening was level and the underside sloped;
+// that was just easier for the keyboard math, the rotate() around it is
+// gone here): base flat on the desk at z=0 (same plane as the main shell's
+// floor bottom -- both stand on the same stick-on feet), kx across
+// (0..kb_w), ky from the FRONT edge (0, nearest the typist) to the BACK
+// face (kb_d, the tall face that mates with the main case's front wall).
+// The keyboard plane (top surface + PCB pocket) slopes UP toward the back
+// by kb_slope_deg: z_top(ky) = kb_front_h + ky*tan(slope); the keyboard PCB
+// pocket floor is the parallel plane z = ky*tan(slope).
+//
+// kb_place() puts it in the MAIN case's frame for "preview": back face flush
+// against main_front_y, X centered on the main case.
+//
+// Board A (the SAME Pico controller PCB as the main case's board B, just
+// different firmware: coco-keyboard matrix -> USB) sits here rotated 180deg
+// from board B so the two boards' USB ends face each other across the seam:
+// a short USB jumper joins them (and B's front port stays free for any
+// ordinary USB keyboard when this shell is detached).
 
-module kb_outer_solid() {
-    linear_extrude(height = kb_shell_h)
-        offset(r = corner_r) offset(delta = -corner_r)
-            square([kb_outer_w, kb_outer_d]);
-}
-module kb_inner_cavity() {
-    translate([0,0,wall])
-        linear_extrude(height = kb_shell_h)
-            offset(r = corner_r) offset(delta = -corner_r)
-                square([kb_outer_w - 2*wall, kb_outer_d - 2*wall]);
-}
-module kb_window() {
-    translate([keyboard_deck_margin, keyboard_deck_margin, -1])
-        linear_extrude(height = kb_shell_h+2)
-            square([keyboard_unit_w, keyboard_unit_d]);
-}
+function kb_z_floor(ky) = ky * tan(kb_slope_deg);   // keyboard-PCB pocket floor
+function kb_z_top(ky)   = kb_front_h + ky * tan(kb_slope_deg);
 
-module kb_pcb_standoffs() {
-    // positions relative to the controller PCB's own local frame, placed
-    // toward one corner of the keyboard tray floor -- move kb_pcb_origin to
-    // taste once tray size is finalized.
-    kb_pcb_origin = [kb_outer_w - kbpcb_w - 10, 10];
-    for (s = kbpcb_standoffs)
-        translate([kb_pcb_origin[0]+s[0], kb_pcb_origin[1]+s[1], 0])
-            standoff_peg(0, 0, s[2], 6);
+module kb_place() {
+    // rigid placement: 180deg about Z (keyboard's +ky runs toward the main case's
+    // -Y, its +kx toward main -X), then down by kb_dz if it has no feet
+    translate([kb_x0 + kb_w, main_front_y + kb_d, -kb_dz]) rotate([0,0,180]) children();
 }
 
-module kb_rear_cutouts() {
-    // USB (Pico) + DE-9 joystick access on the BACK of the keyboard case.
-    // TODO: confirm exact Pico USB edge/orientation and J6 DE-9 pin mapping
-    // against the physical board before finalizing X positions.
-    kb_pcb_origin = [kb_outer_w - kbpcb_w - 10, 10];
-    usb_x = kb_pcb_origin[0] + pico_pos[0];
-    translate([usb_x, kb_outer_d, kb_shell_h*0.4])
-        rect_cutout(12, 7, wall*3); // depth already runs along Y - no rotation needed
+// ---- Board A position (real frame) ----
+// 180deg rotation of board B's placement about Z, USB/LED/button edge
+// (board-local Y=kbpcb_d) pointing at the back face (+ky). The Pico lands at
+// kb_w/2, i.e. dead center of the keyboard, which is also main-case X=board_w/2
+// where board B's USB opening is -> the two USB ports line up.
+// Board-local (lx,ly) -> keyboard frame. Upright: no mirror at all (the 180deg
+// turn is already inside kb_place()); flipped upside down about the ky axis,
+// which mirrors kx.
+function kbA_pt(lx, ly) = [kb_w/2 + (kbA_flipped ? -1 : 1) * (lx - pico_pos[0]), kbA_edge_ky - kbpcb_d + ly];
+kbA_x_lo = min(kbA_pt(0, 0)[0], kbA_pt(kbpcb_w, 0)[0]);   // board's low-kx edge
+kbA_x_hi = max(kbA_pt(0, 0)[0], kbA_pt(kbpcb_w, 0)[0]);
+kbA_y_lo = kbA_edge_ky - kbpcb_d;
+// Headroom printed at render time so a bad kbA_setback / kb_extra_d / kbA_pcb_z /
+// kb_slope_deg shows up immediately.
+echo(str("Board A (", kbA_flipped ? "UPSIDE DOWN" : "upright", "): keyboard-PCB underside above its front edge = ",
+         kb_z_floor(kbA_y_lo), "mm; PCB slab top = ", kbA_pcb_z + kbpcb_thickness, "mm"));
+echo(str("  -> above the PCB: ", kb_z_floor(kbA_y_lo) - kbA_pcb_z - kbpcb_thickness,
+         "mm;  below the PCB (down to the bay floor): ", kbA_pcb_z - kbA_floor_z, "mm"));
+echo(str("Keyboard back-face top = ", kb_cap_h - kb_dz, "mm above the MAIN floor plane, vs main front skirt (front_deck_h) = ",
+         front_deck_h, "mm  (kb frame: ", kb_cap_h, "mm above its own base)"));
+echo(str("Main case: tower top = ", rear_tower_h, "mm above its floor (+", new_foot_height, " feet); flat shelf on the keyboard = ",
+         16 + kb_extra_d, "mm deep"));
 
-    de9_x = kb_pcb_origin[0] + 40; // placeholder offset from J6 position
-    translate([de9_x, kb_outer_d, kb_shell_h*0.5])
-        rect_cutout(20, 12, wall*3); // DE-9 shell envelope, depth along Y
-}
-
-module kb_socket_pockets() {
-    // recesses cut into the tray's rear (mating) wall that main_lip_socket()'s
-    // lugs drop into. Positions mirror main_lip_socket()'s spacing formula --
-    // re-check alignment once both shell widths (board_w vs kb_outer_w) are
-    // finalized, since the two spacings are computed from different widths.
-    // Z now flush to the tray's own floor (0..lug_h) and i=3 (the center
-    // slot) skipped, to match main_lip_socket()'s rebuilt flush-to-floor
-    // lugs -- same reasoning: keep the mating recess aligned with wherever
-    // the lug itself actually is.
-    lug_w = 10; lug_d = 6; lug_h = 6;
-    spacing = kb_outer_w / 6;
-    for (i = [1, 2, 4, 5]) {
-        x = i*spacing;
-        translate([x - lug_w/2 - tol, kb_outer_d - lug_d, -tol])
-            cube([lug_w+2*tol, lug_d+tol, lug_h+2*tol]);
+// ---- Port of the original shell (all coordinates in the real frame) ----
+module kf_grill(g_x, g_y, width, slots) {
+    grill_slot_width = 30;
+    grill_slot_spacing = 20;
+    grill_z = -60;
+    spacing = grill_slot_width + grill_slot_spacing;
+    for (y = [g_y : spacing : g_y + spacing * slots]) {
+        hull() {
+            translate([g_x, y+grill_slot_width/2, grill_z])
+                rotate([-kb_slope_deg, 0, 0]) cylinder(h = 100, d = grill_slot_width);
+            translate([g_x + width, y+grill_slot_width/2, grill_z])
+                rotate([-kb_slope_deg, 0, 0]) cylinder(h = 100, d = grill_slot_width);
+        }
     }
 }
-// ADDITIVE backing pad, mirroring main_magnet_pads() -- must be unioned in
-// separately from kb_magnet_pockets() below (the actual holes), which is
-// used subtractively.
-module kb_magnet_pads() {
-    if (magnet_pad_extra > 0) {
-        n = 4;
-        spacing = kb_outer_w/(n+1);
-        for (i=[1:n])
-            translate([i*spacing, kb_outer_d - wall - magnet_pad_extra, kb_shell_h*0.3])
-                rotate([-90,0,0]) cylinder(d = magnet_pad_d, h = magnet_pad_extra);
+
+kf_left_right_support = 30;
+kf_front_back_support = 20;
+module kf_hollow_int(offset_hollow_x = 0) {
+    translate([offset_hollow_x, 0, 0])
+    translate([kf_left_right_support, kf_front_back_support, kb_base_t])
+        hull() {
+            translate([kb_corner_r - 10, kb_corner_r, 0])
+                cylinder(h = kb_rear_h, r = kb_corner_r - kb_wall);
+            translate([kb_w/2 - 2*kf_left_right_support - kb_corner_r + 10, kb_corner_r, 0])
+                cylinder(h = kb_rear_h, r = kb_corner_r - kb_wall);
+            translate([kb_corner_r - 10, kb_d_key - kf_front_back_support - kb_corner_r - 20, 0])
+                cylinder(h = kb_rear_h, r = kb_corner_r - kb_wall);
+            translate([kb_w/2 - 2*kf_left_right_support - kb_corner_r + 10, kb_d_key - kf_front_back_support - kb_corner_r - 20, 0])
+                cylinder(h = kb_rear_h, r = kb_corner_r - kb_wall);
+        }
+}
+
+module kf_shell() {
+    slide_back = 4;
+    pcb_left = (kb_w - kb_pcb_w) / 2;
+    pcb_right = pcb_left + kb_pcb_w;
+    difference() {
+        intersection() {
+            hull() {
+                translate([kb_corner_r, kb_corner_r, 0])           cylinder(h = kb_front_h, r = kb_corner_r);
+                translate([kb_w - kb_corner_r, kb_corner_r, 0])    cylinder(h = kb_front_h, r = kb_corner_r);
+                translate([kb_corner_r, kb_d - kb_corner_r, 0])    cylinder(h = kb_rear_h, r = kb_corner_r);
+                translate([kb_w - kb_corner_r, kb_d - kb_corner_r, 0]) cylinder(h = kb_rear_h, r = kb_corner_r);
+            }
+            translate([-1, -1, -1]) cube([kb_w + 2, kb_d + 2, kb_cap_h + 1]); // flat shelf behind the keyboard
+        }
+        kf_hollow_int();
+        kf_hollow_int(kb_w/2);
+
+        // keyboard PCB recess -- parallel to the sloped top (this is the one
+        // cut the original authored in the level frame via rotate(slope))
+        rotate([kb_slope_deg, 0, 0])
+        translate([pcb_left, (kb_d_key - kb_pcb_d)/2 + slide_back, 0])
+            cube([kb_pcb_w, kb_pcb_d, kb_rear_h]);
+
+        // underside metal lip on the stock keyboard
+        translate([pcb_left, (kb_d_key - kb_pcb_d)/2 + slide_back + 4.5, 6])
+            rotate([kb_slope_deg, 0, 0]) {
+                rotate([0,90,0]) cylinder(h = kb_pcb_w, d = 4);
+                rotate([0,90,0]) translate([0,114.5,0]) cylinder(h = kb_pcb_w, d = 4);
+            }
+
+        // room for the stock keyboard's ribbon cable(s) coming off its rear edge
+        {
+            ribbon_w = 66; ribbon_vert = 18;
+            ribbon_x = (kb_w - ribbon_w) / 2;
+            ribbon_z = kb_cap_h - 24;
+            // clipped at the tunnel roof's underside (kbA_roof_z) so it can't carve a bite out of the roof over the controller
+            ry0 = kb_d_key-71-3;
+            // never cut into the floor (at shallow slopes ribbon_z-1.6-12 goes negative -- it would
+            // have punched a hole through the base) ...
+            r1z0 = max(ribbon_z-1.6, kb_base_t);         r1z1 = ribbon_z-1.6+ribbon_vert;
+            r2z0 = max(ribbon_z-1.6-12, kb_base_t);      r2z1 = ribbon_z-1.6-12+ribbon_vert;
+            // ... and, behind the pocket, never into the tunnel roof (kbA_roof_z)
+            if (r1z1 > r1z0) {
+                translate([ribbon_x, ry0, r1z0])
+                    cube([ribbon_w, kb_pocket_y1 - 1 - ry0, r1z1 - r1z0]);                 // in front of the roof: full height
+                translate([ribbon_x, kb_pocket_y1 - 1, r1z0])
+                    cube([ribbon_w, (ry0 + 70.8) - (kb_pocket_y1 - 1), max(0.01, min(r1z1, kbA_roof_z) - r1z0)]);
+            }
+            if (r2z1 > r2z0)
+                translate([ribbon_x, kb_d_key-70.8-1, r2z0])  cube([ribbon_w, 70.8-8, r2z1 - r2z0]);
+        }
+
+        // clearance cuts on the stock keyboard's underside hardware (original
+        // "promicro"/washer relief -- kept verbatim from the hand-built file)
+        {
+            promicro_x = 16;
+            promicro_y = (kb_d_key - 45)/2 - 3;
+            promicro_z = 6;
+            promicro_w = 24; promicro_d = 50; promicro_height = 20;
+            translate([promicro_x-7, promicro_y+slide_back+1, promicro_z-1])
+                rotate([kb_slope_deg, 0, 0]) cube([promicro_w, promicro_d-5, promicro_height-2]);
+            translate([pcb_right-6.5, promicro_y-7+slide_back, promicro_z+2])
+                rotate([kb_slope_deg, 0, 0]) cylinder(d=12, h=20);
+            translate([pcb_right-6.5, promicro_y+promicro_d+slide_back, promicro_z+promicro_height-3])
+                rotate([kb_slope_deg, 0, 0]) cylinder(d=12, h=20);
+            translate([promicro_x-0.5, promicro_y-7+slide_back, promicro_z+2])
+                rotate([kb_slope_deg, 0, 0]) cylinder(d=11, h=20);
+            translate([promicro_x-0.5, promicro_y+promicro_d+slide_back+1, promicro_z+promicro_height-3])
+                rotate([kb_slope_deg, 0, 0]) cylinder(d=12, h=20);
+        }
+
+        kf_grill(35 + 10, kf_front_back_support, 70, 1);
+        kf_grill(kb_w/2 + 35 + 20, kf_front_back_support, 70, 1);
     }
 }
+
+// ---- Board A bay + openings (replaces the original hand-cut controller slot) ----
+// ONE-PIECE shell, no separate cover. The bay is two cuts:
+//  (a) open UP into the keyboard-PCB pocket (the controller is dropped in
+//      through the same opening the keyboard module goes in), and
+//  (b) a TUNNEL under the solid rear shelf (ky > the pocket's rear edge) that
+//      also carries the USB corridor out to the back wall. The board's back
+//      end slides under the shelf; the keyboard module then covers the open
+//      part. Only the two FRONT mounting holes get screws (reachable from the
+//      pocket); the two BACK holes are replaced by a support ledge under each
+//      back corner + a lip over it (kbA_lip_*), which holds the 1.6mm board
+//      down without a screw.
+kbA_bay_clr = 2;
+kbA_pilot_h = 5;   // must stay < the boss height (kbA_pcb_z) or the pilot breaks through the bottom
+kb_pocket_y1 = (kb_d_key - kb_pcb_d)/2 + 4 + kb_pcb_d;  // rear edge of the keyboard-PCB pocket
+kbA_roof_z   = min(34, kb_cap_h - 8);   // underside of the roof over the tunnel (kb frame). Shelf top is kb_cap_h, so
+                     // the roof is kb_cap_h - kbA_roof_z thick.
+kbA_lip_gap   = 2.6; // support top -> lip underside: 1.51 PCB + 1.1 play, enough to tilt the
+                     // board's back edge in under the lips, then lower the front onto its bosses
+kbA_lip_depth = 3.5; // how far each lip overhangs the board's back edge
+kbA_lip_w     = 10;  // lip / support width (X)
+function kbA_is_front(s) = s[1] < kbpcb_d/2;   // s[1] = board-local Y; the back edge is the USB edge
+echo(str("Board A tunnel: ", kbA_roof_z - kbA_pcb_z - kbpcb_thickness, "mm above the PCB slab under the shelf; roof ",
+         kb_cap_h - kbA_roof_z, "mm thick"));
+
+module kb_boardA_bay() {
+    // (a) through the ledge, open to the pocket -- BUT ONLY BELOW THE KEYBOARD PLANE. It used to be
+    // a plain box going 80mm straight up, which also sliced the pocket's (forward-leaning) rear
+    // wall away above the board: the rectangular "bite" out of the roof edge over the controller.
+    // Above the plane there is nothing to remove there except that wall, so we stop at the plane
+    // (+0.3 into the open pocket, so the cut never leaves a coplanar skin).
+    intersection() {
+        translate([kbA_x_lo - kbA_bay_clr, kbA_y_lo - kbA_bay_clr, kbA_floor_z])
+            cube([kbpcb_w + 2*kbA_bay_clr, (kb_pocket_y1 + 0.5) - (kbA_y_lo - kbA_bay_clr), 80]);
+        translate([0, 0, 0.3]) rotate([kb_slope_deg, 0, 0]) translate([-500, -500, -1000]) cube([1000, 1000, 1000]);
+    }
+    // (b) tunnel under the shelf, out to the back wall's inner face
+    translate([kbA_x_lo - kbA_bay_clr, kb_pocket_y1 - 1, kbA_floor_z])
+        cube([kbpcb_w + 2*kbA_bay_clr, kbA_wall_y0 - (kb_pocket_y1 - 1), kbA_roof_z - kbA_floor_z]);
+}
+// CABLE BAY: everything between the PCB-edge wall and the back face, kb_bay_x0..kb_bay_x1 wide, floor to the
+// roof underside. Open at the back face -- the main case's front wall closes it when the keyboard is docked.
+// The keyboard's roof/shelf carries on over it (the overhang that hides the cable). The bay is also where
+// the coiled slack of the jumper lives.
+module kb_cable_bay() {
+    translate([kb_bay_x0, kbA_wall_y1, kbA_floor_z])
+        cube([kb_bay_x1 - kb_bay_x0, kb_d - kbA_wall_y1 + 1, kbA_roof_z - kbA_floor_z]);
+}
+// ---- DE-9 (DB9) joystick port on the RIGHT side of the keyboard case ----
+// Wired to board A's J6 (2x5 header) with a 10-conductor ribbon (IDC). Standard DE-9 dimensions -- CHECK THEM
+// AGAINST YOUR ACTUAL CONNECTOR. Mounted from INSIDE: the flange sits against the inner face of a 3mm panel that
+// is recessed de9_recess_d into the right wall (so a joystick plug can seat), the D shell passes through the D
+// cutout, and the connector's own two jack-post/screws use the two 3.3mm holes at 24.99mm pitch.
+// It sits level with J6 (same ky) in the solid shelf zone behind the hollow -- the hollow under the keys is only
+// ~14mm tall there at this slope, too shallow for a 12.5mm connector plus its body -- and a straight ribbon
+// channel runs from the controller tunnel out to the connector's body pocket.
+de9_enabled = true;
+de9_y = kbA_pt((144.67 + 157.37)/2 - 79.0, (-47.77 - 43.64)/2 + 98.0)[1];   // ky of J6's centre (real STL data)
+de9_z = 14;                          // connector centre height (flange 12.55 tall: z 7.7 .. 20.3)
+de9_pitch = 24.99; de9_hole_d = 3.3; // standard mounting-hole pitch (0.984"), clearance for the 4-40/M3 posts
+de9_d_w = 17.4; de9_d_h = 8.9; de9_d_angle = 10;   // D cutout incl. clearance (shell 16.9 x 8.4), wide side UP
+de9_recess_d = 6; de9_recess_w = 36; de9_recess_h = 17;  // outer recess around the flange footprint (30.8 x 12.5)
+de9_panel_t = 3;                     // the mounting panel
+de9_body_d = 18; de9_body_w = 34; de9_body_h = 16;       // pocket behind the panel for the connector body + IDC
+de9_ch_w = 16; de9_ch_h = 10;        // ribbon channel (10 conductors = 12.7 wide flat)
+module de9_d2d(w, h, ang = 10, r = 0.8) {
+    offset(r = r) offset(delta = -r)
+        polygon([[-w/2, h/2], [w/2, h/2], [w/2 - h*tan(ang), -h/2], [-w/2 + h*tan(ang), -h/2]]);
+}
+module kb_de9() {
+    x_panel1 = kb_w - de9_recess_d;            // recess floor = panel's outer face
+    x_panel0 = x_panel1 - de9_panel_t;         // panel's inner face
+    x_body0  = x_panel0 - de9_body_d;
+    // outer recess so the mating plug can seat
+    translate([x_panel1, de9_y - de9_recess_w/2, de9_z - de9_recess_h/2])
+        cube([de9_recess_d + 1, de9_recess_w, de9_recess_h]);
+    // D cutout through the panel
+    translate([x_panel0 - 0.5, de9_y, de9_z]) rotate([90, 0, 90])
+        linear_extrude(height = de9_panel_t + 1) de9_d2d(de9_d_w, de9_d_h, de9_d_angle);
+    // the two mounting holes
+    for (s = [-1, 1])
+        translate([x_panel0 - 0.5, de9_y + s*de9_pitch/2, de9_z]) rotate([0, 90, 0])
+            cylinder(d = de9_hole_d, h = de9_panel_t + 1);
+    // pocket for the connector body
+    translate([x_body0, de9_y - de9_body_w/2, de9_z - de9_body_h/2])
+        cube([de9_body_d + 0.01, de9_body_w, de9_body_h]);
+    // ribbon channel back to the controller tunnel
+    x_tun = kbA_x_hi + kbA_bay_clr - 1;
+    translate([x_tun, de9_y - de9_ch_w/2, de9_z - de9_ch_h/2])
+        cube([x_body0 - x_tun + 0.01, de9_ch_w, de9_ch_h]);
+}
+
+module kb_boardA_access() {
+    // Openings in the back wall, positioned from the REAL stuffed board (Coco_pico_keyb.stl): USB jack,
+    // both LEDs, and the button cap. "face_z" is the PCB face the components stand on: the top when
+    // upright, the bottom when flipped.
+    sgn = kbA_flipped ? -1 : 1;
+    face_z = kbA_flipped ? kbA_pcb_z : kbA_pcb_z + kbpcb_thickness;
+    usb_z = face_z + sgn*kbpcb_usb_z;
+    translate([kbA_pt(kbpcb_usb_x - 79.0, 0)[0], kbA_wall_y0 + kb_wall/2, usb_z])
+        rect_cutout(kb_usb_w, kb_usb_h, kb_wall + 2);
+    for (p = [kbpcb_led1_pos, kbpcb_led2_pos]) {
+        q = kbA_pt(p[0], p[1]);
+        translate([q[0], q[1] - 2, face_z + sgn*kbpcb_led_z])
+            rotate([-90, 0, 0]) cylinder(d = kbpcb_led_access_d, h = kbA_wall_y1 + 1 - (q[1] - 2));
+    }
+    q = kbA_pt(kbpcb_button_pos[0], kbpcb_button_pos[1]);
+    translate([q[0], q[1] - 2, face_z + sgn*kbpcb_btn_z])
+        rotate([-90, 0, 0]) cylinder(d = kbpcb_button_access_d, h = kbA_wall_y1 + 1 - (q[1] - 2));
+    // where board B's own opening lands in THIS frame -- the two only need to overlap
+    b_z = kbpcb_screw_boss_h + kbpcb_thickness + kbpcb_usb_z + kb_dz;
+    echo(str("USB openings (kb-frame z): board A ", usb_z - kb_usb_h/2, "..", usb_z + kb_usb_h/2,
+             "  vs board B ", b_z - kb_usb_h/2, "..", b_z + kb_usb_h/2));
+    echo(str("USB jack mouth -> board B's jack mouth across the cable bay: ~",
+             kbA_setback - kbpcb_edge_poke + kb_wall + kb_cable_bay_d + wall + 3 - kbpcb_edge_poke, "mm"));
+}
+module kb_boardA_floor() {
+    // refill the floor under the bay, after the grill ovals cut through it
+    translate([kbA_x_lo - kbA_bay_clr - 1, kbA_y_lo - kbA_bay_clr - 1, 0])
+        cube([kbpcb_w + 2*kbA_bay_clr + 2, kbA_wall_y0 - (kbA_y_lo - kbA_bay_clr) + 1, kbA_floor_z + 0.01]);
+}
+module kb_boardA_bosses() {
+    // screw bosses at the FRONT two holes only (reachable from the pocket)
+    for (s = kbpcb_standoffs) if (kbA_is_front(s)) {
+        p = kbA_pt(s[0], s[1]);
+        translate([p[0], p[1], 0]) cylinder(d = kbpcb_screw_boss_d, h = kbA_pcb_z);
+    }
+}
+module kb_boardA_pilots() {
+    for (s = kbpcb_standoffs) if (kbA_is_front(s)) {
+        p = kbA_pt(s[0], s[1]);
+        translate([p[0], p[1], kbA_pcb_z - kbA_pilot_h]) cylinder(d = kbpcb_screw_pilot_d, h = kbA_pilot_h + 1);
+    }
+}
+module kb_boardA_back_lips() {
+    // At each back corner of the board (at the X of the two back mounting
+    // holes): a solid ledge UNDER the board's back edge (floor -> PCB bottom)
+    // and a lip OVER it (kbA_lip_gap above the ledge, up into the roof).
+    for (s = kbpcb_standoffs) if (!kbA_is_front(s)) {
+        cx = kbA_pt(s[0], s[1])[0];
+        y0 = kbA_edge_ky - kbA_lip_depth;
+        translate([cx - kbA_lip_w/2, y0 - 2.5, 0])
+            cube([kbA_lip_w, kbA_lip_depth + 2.5 + 0.4, kbA_pcb_z]);                       // support ledge (kept)
+        if (kbA_back_lips)
+            translate([cx - kbA_lip_w/2, y0, kbA_pcb_z + kbA_lip_gap])
+                cube([kbA_lip_w, kbA_lip_depth + 0.4, kbA_roof_z + 0.5 - (kbA_pcb_z + kbA_lip_gap)]); // lip, fused to the roof
+    }
+}
+
+// ---- Joint to the main case ----
+// Fixed X/Z positions come from the MAIN case (main_magnet_x, parting_h/2).
+// The keyboard is the main case turned 180deg about Z, so main X -> kx is
+// kb_x0 + kb_w - X.
+function kb_mag_kx(x) = kb_x0 + kb_w - x;
+function kb_in_bay(kx) = kx > kb_bay_x0 - 6 && kx < kb_bay_x1 + 6;   // a magnet pocket must stay in solid rim
+function kb_bolt_xs() = main_magnet_x;   // all four: the bay-side one has a solid block behind it now
+
+kb_mag_z = parting_h/2 + kb_dz;
+kb_mag_slot_w = magnet_d + 0.2;
+kb_mag_slot_t = magnet_pocket_depth;               // magnet_h + tol
+kb_mag_y0 = kb_d - magnet_face_t - kb_mag_slot_t;  // pocket's rear (inner) face
+kb_plug_h = kb_mag_z - magnet_d/2 - 0.3;           // plug fills the channel up to just under the magnet
+
+// A magnet must never land in the cable bay's X range (no rim behind the face there to hold a pocket).
+for (x = main_magnet_x) if (kb_in_bay(kb_mag_kx(x)))
+    echo(str("WARNING: magnet at main X=", x, " (kb kx=", kb_mag_kx(x), ") falls in the cable bay's X range -- move it"));
+
 module kb_magnet_pockets() {
-    // Blind pocket bored -Y into the tray's rear wall, mating flush
-    // against main_magnet_pockets() on the main shell's front wall, but
-    // now stopping magnet_face_t short of the true outer face instead of
-    // cutting all the way through it -- same reasoning as the main shell's
-    // version: not visible from outside, and the pad above makes up for
-    // the wall (2.4mm) being thinner than the magnet (2.5mm).
-    n = 4;
-    spacing = kb_outer_w/(n+1);
-    for (i=[1:n])
-        translate([i*spacing, kb_outer_d - magnet_face_t - magnet_bore_len, kb_shell_h*0.3])
-            rotate([-90,0,0])
-            cylinder(d = magnet_d + 0.2, h = magnet_bore_len);
+    // Each magnet is loaded from UNDERNEATH: a slot the magnet's own profile
+    // (kb_mag_slot_w wide, one magnet thick) runs up from the base into a
+    // round blind pocket, which stops magnet_face_t short of the back face --
+    // so nothing shows on the back and the magnet sits flush behind a thin skin
+    // against the main shell's own magnet. Then a glued-in plug
+    // (kb_magnet_plug(), part "keyboard_magnet_plugs") closes the slot flush
+    // with the bottom and holds the magnet up. Mind polarity: the face that
+    // ends up toward the main case must attract the main-side magnet.
+    for (x = main_magnet_x) {
+        kx = kb_mag_kx(x);
+        translate([kx, kb_mag_y0, kb_mag_z]) rotate([-90,0,0]) cylinder(d = kb_mag_slot_w, h = kb_mag_slot_t);
+        translate([kx - kb_mag_slot_w/2, kb_mag_y0, -1]) cube([kb_mag_slot_w, kb_mag_slot_t, kb_mag_z + 1]);
+    }
+}
+module kb_magnet_plug() {
+    // lying flat for printing: width x length x thickness
+    cube([kb_mag_slot_w - 0.3, kb_plug_h, kb_mag_slot_t - 0.3]);
+}
+module kb_magnet_plugs() {
+    for (i = [0 : len(main_magnet_x) - 1])
+        translate([i*(kb_mag_slot_w + 3), 0, 0]) kb_magnet_plug();
+}
+module kb_bolt_pilots() {
+    // keyboard_attached: M3 screws are driven from INSIDE the main case (top
+    // shell off), through main_kb_bolt_holes() in its front wall, and thread
+    // into pilots bored from this shell's back face. No nuts needed -- same
+    // self-tap / heat-set choice (m3_pilot_d) as every other boss.
+    for (x = kb_bolt_xs())
+        translate([kb_mag_kx(x), kb_d - kb_bolt_depth, kb_mag_z])
+            rotate([-90,0,0]) cylinder(d = m3_pilot_d, h = kb_bolt_depth + 1);
+}
+module kb_socket_pockets() {
+    lug_w = 10; lug_d = 6; lug_h = 6;
+    spacing = board_w / 6;
+    for (i = [1, 2, 4, 5])
+        translate([kb_mag_kx(i*spacing) - lug_w/2 - tol, kb_d - lug_d, -tol + kb_dz])
+            cube([lug_w+2*tol, lug_d+tol, lug_h+2*tol]);
+}
+
+// Split-line pins (left half gets pins, right half gets holes): in the solid
+// strip between the two hollows, ahead of the board-A bay, and low enough to
+// sit under the sloped pocket floor there.
+kb_pin_y0 = max(38, ceil(9 / tan(kb_slope_deg)) + 2);   // far enough back that the plane is >= 9mm up (pin sits at z=4.5)
+kb_pins = [
+    [kb_pin_y0,      4.5],
+    [kb_pin_y0 + 12, 4.5],
+    // NEW: in the roof over where the board's back end sits -- the seam otherwise had nothing
+    // holding the two halves in line back there
+    [(kb_pocket_y1 + kbA_wall_y0) / 2, (kbA_roof_z + kb_cap_h) / 2],
+    // and one out in the overhang over the cable bay, where the seam otherwise has nothing keeping the halves level
+    [kb_d - 8, (kbA_roof_z + kb_cap_h) / 2],
+];
+module kb_split_pins() {
+    for (p = kb_pins)
+        translate([kb_w/2, p[0], p[1]]) rotate([0,90,0]) cylinder(d = 5, h = 8);
+}
+module kb_split_pin_holes() {
+    for (p = kb_pins)
+        translate([kb_w/2 - 0.01, p[0], p[1]]) rotate([0,90,0]) cylinder(d = 5.4, h = 10);
 }
 
 module kb_case_bottom() {
     difference() {
         union() {
-            difference() { kb_outer_solid(); kb_inner_cavity(); }
-            kb_pcb_standoffs();
-            if (!keyboard_attached) kb_magnet_pads();
+            difference() {
+                kf_shell();
+                kb_boardA_bay();
+                kb_cable_bay();
+                kb_boardA_access();
+                if (de9_enabled) kb_de9();
+                if (!keyboard_attached && lip_socket_tabs_enabled) kb_socket_pockets();
+            }
+            kb_boardA_floor();
+            kb_boardA_bosses();
+            kb_boardA_back_lips();
         }
-        kb_window();
-        kb_rear_cutouts();
-        if (!keyboard_attached) {
-            kb_magnet_pockets();
-            if (lip_socket_tabs_enabled) kb_socket_pockets();
-        }
+        kb_boardA_pilots();
+        // cut LAST, after the blocks are unioned in, so nothing can fill them
+        if (!keyboard_attached) kb_magnet_pockets();
+        if (keyboard_attached)  kb_bolt_pilots();
     }
 }
 
-// bed-size split for the keyboard tray too (placeholder width already > 250mm)
-kb_split_x = kb_outer_w/2;
 module kb_case_bottom_left() {
-    intersection() {
-        kb_case_bottom();
-        translate([-500,-500,-500]) cube([kb_split_x+500, 2000, 2000]);
+    union() {
+        intersection() {
+            kb_case_bottom();
+            translate([-500,-500,-500]) cube([kb_w/2+500, 2000, 2000]);
+        }
+        kb_split_pins();
     }
 }
 module kb_case_bottom_right() {
     difference() {
         intersection() {
             kb_case_bottom();
-            translate([kb_split_x,-500,-500]) cube([2000, 2000, 2000]);
+            translate([kb_w/2,-500,-500]) cube([2000, 2000, 2000]);
         }
+        kb_split_pin_holes();
     }
 }
 
@@ -2607,15 +3291,19 @@ module kb_case_bottom_right() {
 //   "main_top_left"        -- printable piece
 //   "main_top_right"       -- printable piece
 //   "main_top_whole"       -- unsplit (only fits printers >= ~300mm)
-//   "keyboard_bottom_left" -- printable piece (only if keyboard_attached=false)
+//   "keyboard_bottom_left" -- printable piece (magnet or bolted variant, per keyboard_attached)
 //   "keyboard_bottom_right"-- printable piece
 //   "keyboard_bottom_whole"
-part = "main_top_whole";
+//   "keyboard_magnet_plugs"  -- 4 small plugs, glued into the underside magnet slots
+part = "keyboard_bottom_whole";
 
 // exploded gap between the bottom tray and top shell in "preview" only, so
 // the parting line and connector notches are visible; they sit flush (no
 // gap) in every actual printable part.
 preview_explode_z = 0;
+// Y gap between the main case's front face and the keyboard shell's back
+// face in "preview" (0 = as assembled, magnets/bolts touching).
+kb_preview_gap = 0;
 
 // ============================================================================
 // ORIENTATION LABELS -- "preview" only, never part of a printable piece.
@@ -2665,10 +3353,9 @@ if (part == "preview") {
         translate([0, 0, preview_explode_z])
             main_pizero_hdmi_mount(); // reference only -- see main_case_top()'s own comment
     orientation_labels();
-    if (!keyboard_attached)
-        color("DimGray")
-            translate([0, main_front_y + 15, 0])
-                kb_case_bottom();
+    color("DimGray")
+        translate([0, kb_preview_gap, 0])
+            kb_place() kb_case_bottom();
 } else if (part == "main_bottom_left") {
     main_case_bottom_left();
 } else if (part == "main_bottom_right") {
@@ -2687,4 +3374,6 @@ if (part == "preview") {
     kb_case_bottom_right();
 } else if (part == "keyboard_bottom_whole") {
     kb_case_bottom();
+} else if (part == "keyboard_magnet_plugs") {
+    kb_magnet_plugs();
 }
