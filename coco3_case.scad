@@ -530,10 +530,19 @@ kb_feet = false;       // false: this shell sits directly on the desk (no stick-
 kb_dz = kb_feet ? 0 : new_foot_height; // kb-frame z = main-frame z + kb_dz
 kb_wall = 3;
 kb_corner_r = 8;
+kb_left_relief_extra = 4.5;  // the rectangular relief under the keyboard's left end (x 9..33) is this much deeper than the
+                             // original frame's 3mm (fit testing: the stock keyboard needed it) -> 7.5 below the pocket floor
+kb_floor_ovals = false;  // the four oval cut-outs in the floor from the original frame (vestigial -- no venting need); solid floor
+                        // is stiffer in twist and keeps dust out, for ~30g
 kb_base_t = 3;         // floor slab everywhere (was 5 under the hollows / 3 only under the board:
                        // the thinner deck under the PCB worked, so the whole floor is that now)
 kb_pcb_w = 316;        // stock keyboard PCB pocket
+kb_pocket_left_ext = 0.55;   // pocket extended this far LEFT: with its holes on the bezel-screw pattern the keyboard's 315.25
+                             // outline sits 0.6 off-centre (8.77..324.02) and the 316 pocket (9..325) cut into it by 0.23
 kb_pcb_d = 124;
+kb_pocket_front_ext = 2.75;  // pocket extended this far FORWARD (only its front edge moves; the keyboard and screws don't):
+                             // the keyboard sits 0.3 behind the original front edge and the OEM opening is nearly as deep as
+                             // the keyboard, so the bezel had no front rail. 0.3 + 2.5 of bezel + 0.25 clearance.
 kb_pocket_corner_r = 2.5;  // radius on the pocket's four corners (was square). NOTE: a stock PCB with square corners needs
                          // ~1.0mm of relief at each corner to seat (r*(sqrt2-1)) -- round/chamfer its corners, or set this to 0.
 // The top stops rising here (flat shelf behind the keyboard) -- the height the
@@ -3514,9 +3523,10 @@ module kf_shell() {
         // keyboard PCB recess -- parallel to the sloped top (this is the one
         // cut the original authored in the level frame via rotate(slope))
         translate([0, 0, kb_raise]) rotate([kb_slope_deg, 0, 0])
-        translate([pcb_left, (kb_d_key - kb_pcb_d)/2 + slide_back, 0])
+        translate([pcb_left - kb_pocket_left_ext, (kb_d_key - kb_pcb_d)/2 + slide_back - kb_pocket_front_ext, 0])
             linear_extrude(height = kb_rear_h)
-                offset(r = kb_pocket_corner_r) offset(delta = -kb_pocket_corner_r) square([kb_pcb_w, kb_pcb_d]);
+                offset(r = kb_pocket_corner_r) offset(delta = -kb_pocket_corner_r)
+                    square([kb_pcb_w + kb_pocket_left_ext, kb_pcb_d + kb_pocket_front_ext]);
 
         // underside metal lip on the stock keyboard
         translate([pcb_left, (kb_d_key - kb_pcb_d)/2 + slide_back + 4.5, 6 + kb_raise])
@@ -3555,7 +3565,8 @@ module kf_shell() {
             promicro_z = 6 + kb_raise;
             promicro_w = 24; promicro_d = 50; promicro_height = 20;
             translate([promicro_x-7, promicro_y+slide_back+1, promicro_z-1])
-                rotate([kb_slope_deg, 0, 0]) cube([promicro_w, promicro_d-5, promicro_height-2]);
+                rotate([kb_slope_deg, 0, 0]) translate([0, 0, -kb_left_relief_extra])
+                    cube([promicro_w, promicro_d-5, promicro_height-2 + kb_left_relief_extra]);
             translate([pcb_right-6.5, promicro_y-7+slide_back, promicro_z+2])
                 rotate([kb_slope_deg, 0, 0]) cylinder(d=12, h=20);
             translate([pcb_right-6.5, promicro_y+promicro_d+slide_back, promicro_z+promicro_height-3])
@@ -3568,8 +3579,10 @@ module kf_shell() {
 
         // the left ovals' pointed tip used to run into the controller-bay floor refill (which now starts at kbA_x_lo - bay_clr - 1 ~ x 104)
         // and got cut off: shortened so the whole teardrop, tip included, ends 2mm short of the refill
-        kf_grill(35 + 10, kf_front_back_support, min(70, kbA_x_lo - kbA_bay_clr - 1 - 2 - kb_tip_k*15 - (35 + 10)), 1, tip = +1);   // left half prints toward +x
-        kf_grill(kb_w/2 + 35 + 20, kf_front_back_support, 70, 1, tip = -1); // right half prints toward -x
+        if (kb_floor_ovals) {
+            kf_grill(35 + 10, kf_front_back_support, min(70, kbA_x_lo - kbA_bay_clr - 1 - 2 - kb_tip_k*15 - (35 + 10)), 1, tip = +1);   // left half prints toward +x
+            kf_grill(kb_w/2 + 35 + 20, kf_front_back_support, 70, 1, tip = -1); // right half prints toward -x
+        }
     }
 }
 
@@ -3736,6 +3749,51 @@ module kb_boardA_pilots() {
         p = kbA_pt(s[0], s[1]);
         translate([p[0], p[1], kbA_pcb_z - kbA_pilot_h]) cylinder(d = kbpcb_screw_pilot_d, h = kbA_pilot_h + 1);
     }
+}
+
+// ---- Keyboard bezel screws ----
+// Four M3 screws come up from UNDER the shell, through the pocket floor, into a bezel that sits over the keyboard.
+// Same spots as the old "promicro"/washer relief cylinders in kf_shell() (6.5 in from the pocket's sides, ~30 and
+// ~88 back from its front edge). Positions are measured IN the keyboard plane: kb_bezel_screw_v back from the
+// pocket's front edge (along the slope), kb_bezel_screw_pitch apart across X, centred. Holes run square to
+// the keyboard plane so they line up with the keyboard PCB and the bezel.
+// Two keyboards share these holes: the OEM keyboard (3.0mm thick at the holes, 4.8mm hole in its frame) and the
+// Artemis v3 PCB (1.6mm, 5.0mm holes). The Artemis KiCad bezel layers put its holes at 304.8 x 60.0 (12.000") --
+// pocket-edge-minus-5.25 gave 305.5, which would bind an M3 in a 3.4 hole, so the pitch is set from the Artemis data.
+// v: the keyboard outline's front edge sits kb_kbd_front_clr behind the pocket's front edge, and its holes are 30.54 / 90.56
+// behind that (measured on the Artemis STL, which has the OEM outline) -- a flat 30/90 from the pocket put the keyboard
+// 0.55 into the front wall
+kb_kbd_front_clr     = 0.3;
+kb_bezel_screw_v     = [30.54, 90.56] + [1, 1] * kb_kbd_front_clr;
+kb_bezel_screw_pitch = 304.8;
+kb_bezel_screw_d     = 3.4;   // M3 clearance
+kb_bezel_head_d      = 6.4;   // counterbore for an M3 socket/button head (5.5 / 5.7)
+kb_bezel_seat_t      = 3;     // material left between the head's seat and the pocket floor
+kb_pocket_y0 = kb_pocket_y1 - kb_pcb_d;   // the pocket's ORIGINAL front edge (plane coords) -- the datum the screws and
+                                          // keyboard are placed from; the pocket itself now starts kb_pocket_front_ext ahead
+// plane coords (u along X, v back along the slope) -> shell coords; the pocket floor is the plane at kb_raise
+function kb_plane_pt(u, v, w = 0) = [u, v*cos(kb_slope_deg) - w*sin(kb_slope_deg), kb_raise + v*sin(kb_slope_deg) + w*cos(kb_slope_deg)];
+kb_bezel_screws = [ for (v = kb_bezel_screw_v, u = [kb_w/2 - kb_bezel_screw_pitch/2,
+                                                    kb_w/2 + kb_bezel_screw_pitch/2]) [u, kb_pocket_y0 + v] ];
+module kb_bezel_screw_holes() {
+    for (s = kb_bezel_screws) {
+        sgn = s[0] < kb_w/2 ? 1 : -1;   // toward the middle = UP when the half prints on its outer side face
+        translate([0, 0, kb_raise]) rotate([kb_slope_deg, 0, 0]) translate([s[0], s[1], 0]) {
+            // clearance hole: from below the shell's base up through the pocket floor
+            translate([0, 0, -60]) kb_teardrop_cyl(kb_bezel_screw_d, 61, sgn);
+            // head counterbore from the base, stopping kb_bezel_seat_t under the floor
+            translate([0, 0, -60]) kb_teardrop_cyl(kb_bezel_head_d, 60 - kb_bezel_seat_t, sgn);
+        }
+    }
+}
+// cylinder along Z with a 45-deg point toward sgn*X, so it bridges nothing when that side is up in the printer
+module kb_teardrop_cyl(d, h, sgn) {
+    if (kb_print_on_side)
+        hull() {
+            cylinder(d = d, h = h);
+            translate([sgn*d/2*sqrt(2), 0, 0]) cylinder(d = 0.01, h = h);
+        }
+    else cylinder(d = d, h = h);
 }
 module kb_boardA_back_lips() {
     // At each back corner of the board (at the X of the two back mounting
@@ -3998,7 +4056,7 @@ module kb_split_pin_holes() {
         translate([kb_w/2 - 0.01, p[0], p[1]]) rotate([0,90,0]) cylinder(d = 5.4, h = 10);
 }
 
-module kb_case_bottom() {
+module kb_case_bottom(joiners = true) {   // joiners = false for the one-piece print: no bow-tie pockets on the seam
     difference() {
         union() {
             difference() {
@@ -4017,7 +4075,9 @@ module kb_case_bottom() {
             if (kb_print_on_side) kb_wedge_gussets();
         }
         kb_boardA_pilots();
-        kb_joiner_pockets();   // after the floor refill, which would otherwise fill the one at y=118
+        kb_bezel_screw_holes();
+        kb_art_m2_head_recesses();
+        if (joiners) kb_joiner_pockets();   // after the floor refill, which would otherwise fill the one at y=118
         kb_km_pockets();
         // cut LAST, after the blocks are unioned in, so nothing can fill them
         if (!keyboard_attached) kb_magnet_pockets();
@@ -4045,6 +4105,177 @@ module kb_case_bottom_right() {
 }
 
 // ============================================================================
+// KEYBOARD BEZELS (OEM and Artemis)
+// ============================================================================
+// Both sit in the keyboard pocket, top flush with the shell's top surface, held by the four M3 bezel screws
+// (kb_bezel_screws) coming up from under the shell. Built in KEYBOARD-PLANE coords -- u = shell X, v = along the
+// slope from the shell's front (same v as kb_bezel_screws / the pocket), w = up, square to the pocket floor --
+// and put on the slope by kb_plane() for the preview.
+//
+//  - OEM bezel: the stock keyboard has its own thick body/surround (outline = the Artemis STL's outer outline; body =
+//    the STL's face outline stretched kb_oem_body_grow in X, kb_oem_open_r corners; top kb_oem_surround_top above
+//    the pocket floor). The bezel is one solid ring around that body, from the keyboard frame (kb_oem_frame_top) up
+//    to flush with the surround, with the screw pilots and brace voids in it.
+//  - Artemis bezel: the Artemis PCB (OEM-sized, mounting holes on the same pattern) lies on the pocket floor and
+//    "Artemis v3 bezel.stl" sits on it. The file is modelled upside down: turned over about its long (X) axis, its
+//    wide 1.6mm layer (OEM outline) is the UNDERSIDE on the PCB -- left as-is, its window/notches clear PCB parts --
+//    and its 5mm narrow layer is the face. Right way up the key window's narrow (~8mm) tab is at the FRONT (spacebar /
+//    arrow keys) and the wide (~18mm) tab at the upper right. The bezel is that STL with everything above it filled
+//    solid to the common top (kb_bz_top) -- only the key window and the LED hole (upper left, tapered) stay open --
+//    plus solid ends, the skirt, and the wing holes plugged for the screws.
+kb_oem_frame_top    = 3.0;    // OEM keyboard frame top at the screw holes, above the pocket floor (4.8mm holes)
+kb_oem_surround_top = 13.5;   // OEM keyboard's own surround top above the pocket floor
+kb_oem_open_r       = 8;      // corner radius of the OEM surround's opening (the bezel's opening follows it)
+kb_oem_body_grow    = 2.25;   // the OEM module's thick body is this much longer PER SIDE (X only) than the STL's face layer:
+                              // first print's opening was exactly 5 short on the long axis (depth and corners right),
+                              // second print's +5 was 0.5 too long
+// triangular braces on the OEM keyboard's wings, between the wing (frame top) and the thick body: each spans this range
+// back from the keyboard's front edge, reaches kb_oem_brace_out out along the wing and kb_oem_brace_h up the body.
+// Two per side, both sides; the bezel's solid ends get a triangular void over each.
+kb_oem_braces_v   = [[37, 44], [76, 84]];
+kb_oem_brace_out  = 7;
+kb_oem_brace_h    = 6;
+kb_oem_brace_clr  = 0.5;
+kb_bz_top_w = kb_pocket_depth * cos(kb_slope_deg);   // shell top surface above the pocket floor, square to the plane
+kb_bz_proud = -1.0;           // bezel top relative to the shell's top: 1 BELOW it, flush with the OEM module's surround
+                              // (was +1; the first print left the module ~2 sunken in the bezel)
+kb_bz_top   = kb_bz_top_w + kb_bz_proud;
+kb_bz_wall_clr = 0.25;        // bezel outline inside the pocket walls
+kb_bz_kb_clr   = 0.3;         // skirt clear of the keyboard's outline; OEM opening clear of the surround's opening
+kb_bz_pilot_d  = 2.5;         // M3 self-tapping pilot
+kb_bz_pilot_top = 0.6;        // skin left over the blind pilot
+kb_bz_min_w    = 1.2;         // thinner skin than this is dropped (won't print)
+// Artemis STL. Everything below is in its RIGHT-WAY-UP coords (the raw file turned over about X: y -> -y, z -> 6.6-z):
+kb_art_stl    = "Artemis v3 bezel.stl";
+kb_art_h      = 6.6;
+kb_art_wide_h = 1.6;          // underside layer (OEM outline) on the PCB; the face layer above it is the other 5mm
+kb_art_pcb_t  = 1.6;          // Artemis PCB, on the pocket floor
+kb_art_hole_c = [2.98, -7.78];              // hole pattern centre (304.67 x 60.02, measured from the mesh)
+kb_art_face_x = [-141.18, 148.43];          // X extent of the face layer (measured) -- the ends outside it are made solid
+// the wide tab at the BACK of the key window (upper right) is 18.0 wide in the STL (x 103.59..121.58, coming forward
+// from the window's back edge: y 20.82..40.23); the user asked for 1mm off each side -> 16.0
+kb_art_tab_x    = [103.59, 121.58];
+kb_art_tab_y    = [20.82, 40.23];
+kb_art_tab_trim = 1;
+// M2 self-tappers from under the Artemis PCB, through it, into the bezel (stiffness). Positions from the KiCad bezel-layer
+// SVGs ("2511 Artemis v3-Bezel Layers": BOTTOM r1.5 / MIDDLE r0.9), relative to the SVG's own M3 mounting holes
+// (55.35/360.15 x 76.65/136.65, centre 207.75,106.65 -- which sit on kb_bezel_screws). SVG y runs toward the FRONT.
+kb_art_m2_svg   = [[128.01, 50.50], [282.01, 50.50], [128.01, 161.00], [282.01, 161.00]];
+kb_art_m2_svg_c = [207.75, 106.65];
+kb_art_m2_pilot = 1.6;        // M2 self-tapping pilot
+kb_art_m2_depth = 8;          // pilot depth above the PCB -> M2 x 8 (1.6 PCB + 6.4 bite) or x 10
+kb_art_m2_head_d = 5.5;       // recess in the keyboard shell's pocket floor for each M2 head (the PCB lies on the floor)
+kb_art_m2_head_h = 2.2;
+// the STL's own blind 2.7 holes near these spots (0.25-0.45 off the SVG positions, too big to bite): plugged
+kb_art_stl_m2_holes = [[-77.04, -62.59], [77.48, -62.59], [-77.04, 47.91], [77.48, 47.91]];   // right-way-up STL coords
+
+module kb_plane() { translate([0, 0, kb_raise]) rotate([kb_slope_deg, 0, 0]) children(); }
+// right-way-up STL coords -> plane coords: its hole pattern lands on the screw pattern
+module kb_art_frame() {
+    translate([kb_w/2, kb_pocket_y0 + (kb_bezel_screw_v[0] + kb_bezel_screw_v[1])/2]) translate(-kb_art_hole_c) children();
+}
+module kb_art_solid() { translate([0, 0, kb_art_h]) rotate([180, 0, 0]) import(kb_art_stl); }   // right way up, z 0..6.6
+module kb_bz_pocket_2d() {
+    translate([(kb_w - kb_pcb_w)/2 - kb_pocket_left_ext, kb_pocket_y0 - kb_pocket_front_ext])
+        offset(r = kb_pocket_corner_r) offset(delta = -kb_pocket_corner_r)
+            square([kb_pcb_w + kb_pocket_left_ext, kb_pcb_d + kb_pocket_front_ext]);
+}
+module kb_bz_in_2d() { offset(delta = -kb_bz_wall_clr) kb_bz_pocket_2d(); }        // bezel outline
+module kb_kbd_outline_2d() { kb_art_frame() hull() projection() kb_art_solid(); }   // OEM keyboard / Artemis PCB = STL outline
+module kb_art_face_cut_2d() { kb_art_frame() projection(cut = true) translate([0, 0, -(kb_art_h - 1)]) kb_art_solid(); }  // 1mm under the face
+module kb_art_face_2d() { hull() kb_art_face_cut_2d(); }                              // face outline (~290x119.5 = OEM opening)
+module kb_art_open_2d() { difference() { kb_art_face_2d(); kb_art_face_cut_2d(); } }  // key window + LED hole, as seen from the top
+// the bands left and right of the face (full depth): the solid ends
+function kb_body_u() = [kb_w/2 - kb_art_hole_c[0] + kb_art_face_x[0] - kb_oem_body_grow,   // OEM thick body's X edges
+                        kb_w/2 - kb_art_hole_c[0] + kb_art_face_x[1] + kb_oem_body_grow];
+module kb_oem_body_2d(clr = 0) {   // OEM thick body = the face outline stretched kb_oem_body_grow each way in X
+    hull() for (s = [-1, 1]) translate([s*kb_oem_body_grow, 0]) offset(delta = clr) kb_art_face_2d();
+}
+function kb_art_m2_pts() = [ for (q = kb_art_m2_svg)    // plane coords (u, v)
+    [kb_w/2 + (q[0] - kb_art_m2_svg_c[0]), kb_pocket_y0 + (kb_bezel_screw_v[0] + kb_bezel_screw_v[1])/2 - (q[1] - kb_art_m2_svg_c[1])] ];
+module kb_art_m2_head_recesses() {
+    kb_plane() for (p = kb_art_m2_pts()) translate([p[0], p[1], -kb_art_m2_head_h]) cylinder(d = kb_art_m2_head_d, h = kb_art_m2_head_h + 1, $fn = 32);
+}
+module kb_bz_skirt(h) {       // fills the pocket around the keyboard's outline (only where there's room: the ~0.4 strip
+                              // down each side is under kb_bz_min_w, won't slice, and is dropped)
+    translate([0, 0, 0.3]) linear_extrude(height = h - 0.3)
+        intersection() {   // (re-growing after the thin-strip filter bulges ~0.1 past the clearance line: clip it back)
+            kb_bz_in_2d();
+            offset(delta = kb_bz_min_w/2) offset(delta = -kb_bz_min_w/2)
+                difference() { kb_bz_in_2d(); offset(delta = kb_bz_kb_clr) kb_kbd_outline_2d(); }
+        }
+}
+module kb_bz_pilots(w0) {
+    for (s = kb_bezel_screws) translate([s[0], s[1], w0]) cylinder(d = kb_bz_pilot_d, h = kb_bz_top - kb_bz_pilot_top - w0, $fn = 24);
+}
+module kb_bezel_oem() {
+    // one solid ring: everything outside the module's body opening (r8 corners), from the keyboard frame
+    // (kb_oem_frame_top) up to the top. The underside is flat all round -- the old front/rear skirt ran on down to
+    // the pocket floor and stood 2.7 proud of it, fouling the module -- and the top sits flush with the module's
+    // own surround (kb_bz_top)
+    difference() {
+        translate([0, 0, kb_oem_frame_top]) linear_extrude(height = kb_bz_top - kb_oem_frame_top)
+            offset(delta = kb_bz_min_w/2) offset(delta = -kb_bz_min_w/2) difference() { kb_bz_in_2d();
+                offset(r = kb_oem_open_r) offset(delta = -kb_oem_open_r) kb_oem_body_2d(kb_bz_kb_clr); }
+        kb_bz_pilots(kb_oem_frame_top - 0.1);
+        kb_oem_brace_voids();
+    }
+}
+// right-angled triangle in the wing/body corner (legs along the wing and up the body), grown by kb_oem_brace_clr
+module kb_oem_brace_voids() {
+    c = kb_oem_brace_clr;
+    for (b = kb_oem_braces_v, side = [0, 1]) {
+        edge = kb_body_u()[side];
+        out = side == 0 ? -1 : 1;                                  // along the wing, away from the body
+        y0 = kb_pocket_y0 + kb_kbd_front_clr + b[0] - c;           // keyboard front edge + measured range
+        hull() for (p = [[-c, -0.1], [kb_oem_brace_out + 2*c, -0.1], [-c, kb_oem_brace_h + 2*c]])
+            translate([edge + out*p[0] - 0.005, y0, kb_oem_frame_top + p[1]]) cube([0.01, b[1] - b[0] + 2*c, 0.01]);
+    }
+}
+module kb_bezel_artemis() {
+    w_art = kb_art_pcb_t;              // STL underside
+    w_face = w_art + kb_art_h;         // STL face
+    // trimmed to the pocket: with its holes on the screw pattern the STL's outline sits 0.6 off-centre and pokes
+    // ~0.2 into the left wall
+    intersection() {
+        translate([0, 0, -1]) linear_extrude(height = kb_bz_top + 2) kb_bz_in_2d();
+        difference() {
+            union() {
+                translate([0, 0, w_art]) kb_art_frame() kb_art_solid();
+                kb_bz_skirt(kb_bz_top);
+                // everything outside the face layer, from the underside layer's top up
+                translate([0, 0, w_art + kb_art_wide_h - 0.01]) linear_extrude(height = kb_bz_top - (w_art + kb_art_wide_h) + 0.01)
+                    difference() { kb_bz_in_2d(); offset(delta = -0.2) kb_art_face_2d(); }   // overlaps the face layer's edge
+                // over the face: solid to the top, only the key window and LED hole open
+                translate([0, 0, w_face - 0.01]) linear_extrude(height = kb_bz_top - w_face + 0.01)
+                    difference() { kb_art_face_2d(); kb_art_open_2d(); }
+                for (s = kb_bezel_screws) translate([s[0], s[1], w_art]) cylinder(d = 5, h = kb_art_wide_h + 0.01, $fn = 32);   // plug the wing hole
+                translate([0, 0, w_art]) kb_art_frame() for (h = kb_art_stl_m2_holes)                                           // plug the STL's 2.7 holes
+                    translate(h) cylinder(d = 4.2, h = 3.8, $fn = 32);
+            }
+            kb_bz_pilots(w_art - 0.1);
+            // trim the back tab's two sides (all the way up: below the face layer that area is window anyway)
+            kb_art_frame() for (x = [kb_art_tab_x[0], kb_art_tab_x[1] - kb_art_tab_trim])
+                translate([x - 0.01, kb_art_tab_y[0] - 0.01, -1]) cube([kb_art_tab_trim + 0.01, kb_art_tab_y[1] - kb_art_tab_y[0], kb_bz_top + 2]);
+            for (p = kb_art_m2_pts()) translate([p[0], p[1], w_art - 0.1]) cylinder(d = kb_art_m2_pilot, h = kb_art_m2_depth + 0.1, $fn = 20);
+        }
+    }
+}
+// print orientation: top face down on the bed, so the top comes out smooth and nothing overhangs. A real 180-degree
+// turn about the long axis, so the printed part IS the design. (This used to be mirror([0,0,1]) -- which prints the
+// design's mirror image: the first Artemis print came out left/right reversed, LED hole back-right.)
+module kb_bz_print() { translate([0, 0, kb_bz_top]) rotate([180, 0, 0]) translate([0, -2 * kb_pocket_y0 - kb_pcb_d, 0]) children(); }
+// The OEM bezel keeps the old MIRRORED output on purpose: that print was test-fitted and is right (the model's 0.6
+// off-centre body, taken from the Artemis STL, is evidently the wrong way round for the real OEM module).
+module kb_bz_print_oem() { translate([0, 0, kb_bz_top]) mirror([0, 0, 1]) children(); }
+module kb_bz_half(right) {
+    intersection() {
+        children();
+        translate([right ? kb_w/2 : kb_w/2 - 1000, -500, -500]) cube([1000, 2000, 2000]);
+    }
+}
+
+// ============================================================================
 // PART SELECTOR
 // ============================================================================
 // Set to one of:
@@ -4064,6 +4295,9 @@ module kb_case_bottom_right() {
 //   "keyboard_bridge_plate"  -- stepped plate joining keyboard and main bottom for the permanently-attached build
 //   "keyboard_joiner_keys"   -- 3 bow-tie keys for the underside seam pockets
 //   "keyboard_main_keys"     -- 2 stepped bow-tie keys joining the keyboard to the main bottom (underside, across the front/back seam)
+//   "bezel_oem_whole/_left/_right"      -- bezel over the stock keyboard (print orientation: top face down)
+//   "bezel_artemis_whole/_left/_right"  -- Artemis STL + filler/skin, one piece (same orientation)
+//   "bezel_fit_oem" / "bezel_fit_artemis" -- the bezel sitting in the keyboard shell, for looking at
 part = "main_bottom_whole";
 
 // exploded gap between the bottom tray and top shell in "preview" only, so
@@ -4142,7 +4376,7 @@ if (part == "preview") {
 } else if (part == "keyboard_bottom_right") {
     kb_case_bottom_right();
 } else if (part == "keyboard_bottom_whole") {
-    kb_case_bottom();
+    kb_case_bottom(joiners = false);
 } else if (part == "keyboard_magnet_plugs") {
     kb_magnet_plugs();
 } else if (part == "keyboard_faceplate") {
@@ -4155,4 +4389,19 @@ if (part == "preview") {
     keyboard_main_keys();
 } else if (part == "keyboard_joiner_keys") {
     kb_joiner_keys();
+} else if (part == "bezel_oem_whole") {
+    kb_bz_print_oem() kb_bezel_oem();
+} else if (part == "bezel_oem_left") {
+    kb_bz_print_oem() kb_bz_half(false) kb_bezel_oem();
+} else if (part == "bezel_oem_right") {
+    kb_bz_print_oem() kb_bz_half(true) kb_bezel_oem();
+} else if (part == "bezel_artemis_whole") {
+    kb_bz_print() kb_bezel_artemis();
+} else if (part == "bezel_artemis_left") {
+    kb_bz_print() kb_bz_half(false) kb_bezel_artemis();
+} else if (part == "bezel_artemis_right") {
+    kb_bz_print() kb_bz_half(true) kb_bezel_artemis();
+} else if (part == "bezel_fit_oem" || part == "bezel_fit_artemis") {   // bezel in place in the keyboard shell, for looking at
+    color("DimGray") kb_case_bottom();
+    color("Goldenrod") kb_plane() if (part == "bezel_fit_oem") kb_bezel_oem(); else kb_bezel_artemis();
 }
