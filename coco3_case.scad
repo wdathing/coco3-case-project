@@ -559,6 +559,61 @@ kb_pocket_corner_r = 2.5;  // radius on the pocket's four corners (was square). 
 // shell would have had at its original depth, so kb_extra_d adds room, not height.
 kb_cap_h = kb_front_h + tan(kb_slope_deg) * (kb_d_key - 2*kb_corner_r);
 kb_x0 = board_w/2 - kb_w/2;   // main-frame X of the keyboard's left edge (centered on the main case)
+kbpcb_screw_boss_h = 6; // was 3, raised per direction ("2 to 3 more mm height...
+                         // for a bit more screw grab") -- still low/flush
+                         // compared to the original 10mm freestanding pillar,
+                         // just with more real self-tap thread engagement now.
+// Board A (Pico, coco-keyboard -> USB), rotated 180deg from board B in the main case.
+kbA_setback = kbpcb_edge_poke + 0.7;   // board's USB edge -> the inner face of the wall that sits AT the PCB's edge. The
+                       // USB jack pokes 0.33mm past the edge, so this leaves 0.7mm to the jack.
+// Layout along ky (front -> back):  ... keyboard pocket | board A (where headroom under the keyboard plane puts
+// it) | 1mm | WALL (kb_wall) | CABLE BAY (kb_cable_bay_d, open at the back face toward the computer) |.
+// The shell's roof carries on over the bay: that overhang hides the cable while docked, and the open bay gives
+// the plug that sticks out of the main case's front wall somewhere to go as the keyboard is brought up.
+kb_cable_bay_d = one_piece_bottom ? 8 : 12;   // depth of the bay behind the PCB-edge wall (was 20): needs a RIGHT-ANGLE / low-profile
+                       // USB plug -- the plug-to-plug distance across the seam is kbA_setback + wall + this + the main case's
+                       // wall/clearance (see the echo). One-piece: 8, to shorten the shelf; each plug then has ~13mm to the far wall.
+kb_bay_x0 = kb_w/2 - fp_len/2;   // bay X extent = the shared faceplate window, centred on the header line (kx 97..237): it takes in A's
+kb_bay_x1 = kb_w/2 + fp_len/2;   //   USB jack (kx ~126) and where board B's opening lands in this frame (kx ~198..218), ~81mm apart
+kbA_flipped = false;   // true: board mounted UPSIDE DOWN (components hang below the PCB, bare
+                       // face up) -> almost no headroom needed under the keyboard, but the
+                       // bay needs depth below the PCB instead (see the echo() lines)
+kbA_flip_pcb_z = kb_base_t + kbpcb_comp_above + 0.5;   // PCB height when flipped: real component depth (8.6) + clearance
+kbA_floor_z = kb_base_t; // bay floor == the general floor now (3mm)
+kbA_pcb_z = kbA_flipped ? kbA_flip_pcb_z : kbpcb_screw_boss_h; // PCB slab bottom above the shell
+                       // base plane (upright default 6 = board B's height above the main floor)
+kb_usb_w = 20; kb_usb_h = 11; // same opening size as main_usb_passthrough_front()
+// Headroom the board needs under the keyboard PCB plane (whose height above the base at the board's front
+// edge is ky*tan(slope)): the PCB plus whatever stands on it (upright: the tallest header; flipped: only a
+// screw head). It sets how far back the board sits (kbA_edge_ky, below) -- shallower slopes push it back.
+// Board A's back (USB) edge: the board sits under the keyboard plane, whose height above the base at the board's
+// FRONT edge is ky*tan(slope). That front edge has to be far enough back to clear the PCB plus the tallest part
+// (upright: the real 8.62mm headers; flipped: only a screw head) -- so shallower slopes push the board back.
+// Never further forward than the original frame's rear rim (kb_d_key - kb_wall - kbA_setback).
+// Each tall part only needs the keyboard plane to clear IT, at ITS distance behind the board's front edge -- not the
+// whole board at the front edge. [ly of the part's front-most point, its height above the PCB top], from the
+// stuffed-board STL. The frontmost 1x16 header footprint is NOT populated, so it is not listed; if it ever is, add it.
+kbA_parts = [ [0, 0],            // the bare PCB
+              [18.53, 3.58],     // Pico
+              [19.37, 8.62],     // the installed 1x16 header (the tallest, and the front-most tall part)
+              [33.47, 8.62],     // 1x4 header
+              [50.23, 8.62],     // 2x5 header (J6)
+              [53.20, 8.62],     // 1x2 header
+              [62.28, 8.38],     // LED lenses
+              [62.85, 7.09] ];   // button
+function kbA_ylo_min() = kbA_flipped
+    ? (kbA_pcb_z + kbpcb_thickness + 3 - kb_raise) / tan(kb_slope_deg)          // flipped: only a screw head stands up
+    : max([ for (c = kbA_parts) (kbA_pcb_z + kbpcb_thickness + c[1] + 0.9 - kb_raise) / tan(kb_slope_deg) - c[0] ]);
+kbA_edge_ky = max(ceil(kbA_ylo_min()) + kbpcb_d, kb_d_key - kb_wall - kbA_setback);
+kbA_wall_y0 = kbA_edge_ky + kbA_setback;      // inner face of the PCB-edge wall
+kbA_wall_y1 = kbA_wall_y0 + kb_wall;          // its back face = start of the cable bay
+kb_d = kbA_wall_y1 + kb_cable_bay_d;          // overall depth (ky)
+kb_extra_d = kb_d - kb_d_key;
+kb_rear_h = kb_front_h + tan(kb_slope_deg) * (kb_d - 2*kb_corner_r);   // plane height at the rear cylinders (cutting height)
+// Height of the keyboard's top at its back face (what the main case's front skirt meets). Normally the top stops rising
+// at kb_cap_h and runs back flat (the shelf). One-piece: no flat shelf -- the keyboard plane carries on at kb_slope_deg
+// right to the back face, so it flows straight into the main top's ramp (the tower rises with it).
+kb_back_h = one_piece_bottom ? kb_front_h + tan(kb_slope_deg) * kb_d : kb_cap_h;
 // The main case's front skirt is derived from the keyboard: the keyboard's flat shelf top
 // (kb_cap_h, measured from ITS base = kb_dz below the main floor) meets the main case's
 // front skirt top flush. The floppy-bay stack rises by the same amount (see bay_face_z0)
@@ -574,7 +629,7 @@ kb_match_skirt = true;
 // -- not an arbitrary styling constant like the old front_deck_h/
 // rear_tower_h were.
 top_skirt_h_base = 8;
-top_skirt_h   = kb_match_skirt ? (kb_cap_h - kb_dz - parting_h) : top_skirt_h_base;
+top_skirt_h   = kb_match_skirt ? (kb_back_h - kb_dz - parting_h) : top_skirt_h_base;
                       // ^ was a flat 8: now matches the keyboard shell's flat shelf top (kb_match_skirt).
                       // Vertical wall height above parting_h at the front edge -- reduced
                         // from 18 per direction ("straight up band interface to the base...
@@ -2208,10 +2263,8 @@ main_kbpcb_origin = [board_w/2 - kbpcb_hdr_cx,
                       (board_d + case_margin) - wall - kbpcb_front_clearance - kbpcb_d];
 kbpcb_screw_boss_d = 7;
 kbpcb_screw_pilot_d = m3_pilot_d; // self-tap/heat-set pilot for the board's 3.2mm holes
-kbpcb_screw_boss_h = 6; // was 3, raised per direction ("2 to 3 more mm height...
-                         // for a bit more screw grab") -- still low/flush
-                         // compared to the original 10mm freestanding pillar,
-                         // just with more real self-tap thread engagement now.
+// kbpcb_screw_boss_h (6) is defined up with the keyboard shell parameters: board A's height, and through it the
+// keyboard's depth, depends on it, and the main case's skirt is derived from that depth.
 // Reuses all 4 of the board's REAL mounting holes (kbpcb_standoffs) -- this
 // is the actual physical Pico keyboard-controller PCB's own hole pattern,
 // so every hole should get a boss unless there's a real fit conflict.
@@ -2460,6 +2513,12 @@ module main_cart_guide_walls() {
 // Step dimensions (extra width + step height) are a first-pass guess --
 // the photo isn't clear enough at this resolution to measure precisely;
 // retune once you can measure the real feature.
+// cn3_bump: the whole CN3 access feature -- the floor opening, collar, shelf, hopper and raised pedestal (the "RGB bump").
+// Off: plain floor there; the corner screw boss (cn3_new_standoff_xy) stays, as a full-height post braced to the side
+// wall (X, running on into the support beam's end) and to the front wall (Y). Off by default in the one-piece build.
+cn3_bump = !one_piece_bottom;
+cn3_brace_w    = 3;
+cn3_brace_drop = 3;     // braces stop this far below the board's underside (clear of solder tails near the board edge)
 cn3_open       = 42;
 cn3_collar_t   = wall;
 // FOUND IT: cn3_step_extra was 3mm, wider than cn3_collar_t (2.4mm) -- the
@@ -2677,6 +2736,23 @@ module main_cn3_new_standoff() {
     p = cn3_new_standoff_xy();
     translate([0, 0, cn3_pedestal_base_h - 2])
         standoff_peg(p[0], p[1], cn3_new_standoff_hole_d, standoff_height - cn3_pedestal_base_h + 2);
+}
+
+// cn3_bump off: the same screw position, standing on the floor, braced in X (side wall -> post -> the support beam's end)
+// and in Y (post -> front wall). Blind pilot, so the floor stays closed underneath.
+module main_cn3_braced_standoff() {
+    p = cn3_new_standoff_xy();
+    bh = standoff_height - cn3_brace_drop;
+    side_in = -case_margin + wall;        // the side wall's inner face
+    front_in = main_front_y - wall;
+    difference() {
+        union() {
+            translate([p[0], p[1], 0]) cylinder(d = cn3_new_standoff_hole_d + 4, h = standoff_height);
+            translate([side_in - 0.5, p[1] - cn3_brace_w/2, 0]) cube([beam_margin + 1 - (side_in - 0.5), cn3_brace_w, bh]);
+            translate([p[0] - cn3_brace_w/2, p[1], 0]) cube([cn3_brace_w, front_in + 0.5 - p[1], bh]);
+        }
+        translate([p[0], p[1], new_floor_t + 1]) cylinder(d = cn3_new_standoff_hole_d, h = standoff_height);
+    }
 }
 
 // Groove around the OUTSIDE of the tray: starts at the SAME height as the
@@ -3116,7 +3192,7 @@ module main_case_bottom() {
                 main_standoffs_braces();
                 main_cart_slot_support();
                 main_cart_guide_walls();
-                main_cn3_collar();
+                if (cn3_bump) main_cn3_collar();
                 main_support_beam();
                 main_beam_cross_braces();
                 main_rear_support_ribs();
@@ -3135,7 +3211,7 @@ module main_case_bottom() {
             }
             main_faceplate_window(); // replaces the separate USB / LED / button cutouts: the shared faceplate carries them now
             main_faceplate_floor_pilots();
-            main_cn3_access_cut();
+            if (cn3_bump) main_cn3_access_cut();
             main_cable_raceway_end_cuts();
             main_cable_raceway_floor_cut();
             main_pcb_edge_lip_relief();
@@ -3160,10 +3236,13 @@ module main_case_bottom() {
         main_cn1_raceway_braces(); // same reasoning -- needs to merge with
                                     // the raceway's own solid roof, added
                                     // here right alongside it
-        main_cn3_shelf();
-        main_cn3_hopper();
-        main_cn3_pedestal();
-        main_cn3_new_standoff();
+        if (cn3_bump) {
+            main_cn3_shelf();
+            main_cn3_hopper();
+            main_cn3_pedestal();
+            main_cn3_new_standoff();
+        } else
+            main_cn3_braced_standoff();
     }
 }
 
@@ -3378,52 +3457,7 @@ echo(str("Seam lugs: top mid lug bottom ", main_seam_lugs_top[1][2], " vs drive 
          "; bottom mid lug ", main_seam_lugs_bottom[1][0], "..", main_seam_lugs_bottom[1][1],
          " (vents end ", board_d*0.35 + vent_slot_len/2, ", board B from ", main_kbpcb_origin[1], ")"));
 
-// Board A (Pico, coco-keyboard -> USB), rotated 180deg from board B in the main case.
-kbA_setback = kbpcb_edge_poke + 0.7;   // board's USB edge -> the inner face of the wall that sits AT the PCB's edge. The
-                       // USB jack pokes 0.33mm past the edge, so this leaves 0.7mm to the jack.
-// Layout along ky (front -> back):  ... keyboard pocket | board A (where headroom under the keyboard plane puts
-// it) | 1mm | WALL (kb_wall) | CABLE BAY (kb_cable_bay_d, open at the back face toward the computer) |.
-// The shell's roof carries on over the bay: that overhang hides the cable while docked, and the open bay gives
-// the plug that sticks out of the main case's front wall somewhere to go as the keyboard is brought up.
-kb_cable_bay_d = 12;   // depth of the bay behind the PCB-edge wall (was 20): needs a RIGHT-ANGLE / low-profile USB plug -- the plug-to-plug
-                       // distance across the seam is kbA_setback + wall + this + the main case's wall/clearance (see the echo)
-kb_bay_x0 = kb_w/2 - fp_len/2;   // bay X extent = the shared faceplate window, centred on the header line (kx 97..237): it takes in A's
-kb_bay_x1 = kb_w/2 + fp_len/2;   //   USB jack (kx ~126) and where board B's opening lands in this frame (kx ~198..218), ~81mm apart
-kbA_flipped = false;   // true: board mounted UPSIDE DOWN (components hang below the PCB, bare
-                       // face up) -> almost no headroom needed under the keyboard, but the
-                       // bay needs depth below the PCB instead (see the echo() lines)
-kbA_flip_pcb_z = kb_base_t + kbpcb_comp_above + 0.5;   // PCB height when flipped: real component depth (8.6) + clearance
-kbA_floor_z = kb_base_t; // bay floor == the general floor now (3mm)
-kbA_pcb_z = kbA_flipped ? kbA_flip_pcb_z : kbpcb_screw_boss_h; // PCB slab bottom above the shell
-                       // base plane (upright default 6 = board B's height above the main floor)
-kb_usb_w = 20; kb_usb_h = 11; // same opening size as main_usb_passthrough_front()
-// Headroom the board needs under the keyboard PCB plane (whose height above the base at the board's front
-// edge is ky*tan(slope)): the PCB plus whatever stands on it (upright: the tallest header; flipped: only a
-// screw head). It sets how far back the board sits (kbA_edge_ky, below) -- shallower slopes push it back.
-// Board A's back (USB) edge: the board sits under the keyboard plane, whose height above the base at the board's
-// FRONT edge is ky*tan(slope). That front edge has to be far enough back to clear the PCB plus the tallest part
-// (upright: the real 8.62mm headers; flipped: only a screw head) -- so shallower slopes push the board back.
-// Never further forward than the original frame's rear rim (kb_d_key - kb_wall - kbA_setback).
-// Each tall part only needs the keyboard plane to clear IT, at ITS distance behind the board's front edge -- not the
-// whole board at the front edge. [ly of the part's front-most point, its height above the PCB top], from the
-// stuffed-board STL. The frontmost 1x16 header footprint is NOT populated, so it is not listed; if it ever is, add it.
-kbA_parts = [ [0, 0],            // the bare PCB
-              [18.53, 3.58],     // Pico
-              [19.37, 8.62],     // the installed 1x16 header (the tallest, and the front-most tall part)
-              [33.47, 8.62],     // 1x4 header
-              [50.23, 8.62],     // 2x5 header (J6)
-              [53.20, 8.62],     // 1x2 header
-              [62.28, 8.38],     // LED lenses
-              [62.85, 7.09] ];   // button
-function kbA_ylo_min() = kbA_flipped
-    ? (kbA_pcb_z + kbpcb_thickness + 3 - kb_raise) / tan(kb_slope_deg)          // flipped: only a screw head stands up
-    : max([ for (c = kbA_parts) (kbA_pcb_z + kbpcb_thickness + c[1] + 0.9 - kb_raise) / tan(kb_slope_deg) - c[0] ]);
-kbA_edge_ky = max(ceil(kbA_ylo_min()) + kbpcb_d, kb_d_key - kb_wall - kbA_setback);
-kbA_wall_y0 = kbA_edge_ky + kbA_setback;      // inner face of the PCB-edge wall
-kbA_wall_y1 = kbA_wall_y0 + kb_wall;          // its back face = start of the cable bay
-kb_d = kbA_wall_y1 + kb_cable_bay_d;          // overall depth (ky)
-kb_extra_d = kb_d - kb_d_key;
-kb_rear_h = kb_front_h + tan(kb_slope_deg) * (kb_d - 2*kb_corner_r);   // plane height at the rear cylinders (cutting height)
+// (Board A's layout along ky -- kbA_setback .. kb_d -- is defined up with the keyboard shell parameters, next to kb_x0.)
 kbA_back_ledges = false;
 kbA_back_lips = false;  // the two hanging lip columns over the board's back corners (removed: they
                         // looked odd and printed as floating pillars). The board is held by its two
@@ -3480,10 +3514,10 @@ echo(str("Board A (", kbA_flipped ? "UPSIDE DOWN" : "upright", "): keyboard-PCB 
          kb_z_floor(kbA_y_lo), "mm; PCB slab top = ", kbA_pcb_z + kbpcb_thickness, "mm"));
 echo(str("  -> above the PCB: ", kb_z_floor(kbA_y_lo) - kbA_pcb_z - kbpcb_thickness,
          "mm;  below the PCB (down to the bay floor): ", kbA_pcb_z - kbA_floor_z, "mm"));
-echo(str("Keyboard back-face top = ", kb_cap_h - kb_dz, "mm above the MAIN floor plane, vs main front skirt (front_deck_h) = ",
-         front_deck_h, "mm  (kb frame: ", kb_cap_h, "mm above its own base)"));
+echo(str("Keyboard back-face top = ", kb_back_h - kb_dz, "mm above the MAIN floor plane, vs main front skirt (front_deck_h) = ",
+         front_deck_h, "mm  (kb frame: ", kb_back_h, "mm above its own base)"));
 echo(str("Main case: tower top = ", rear_tower_h, "mm above its floor (+", new_foot_height, " feet); flat shelf on the keyboard = ",
-         16 + kb_extra_d, "mm deep"));
+         one_piece_bottom ? 0 : 16 + kb_extra_d, "mm deep"));
 
 // ---- PRINTING THE HALVES ON THEIR OUTER EDGES, WITHOUT SUPPORT ----
 // Each half stands on its outer side face (left half on x=0, right half on x=kb_w), so the build direction runs
@@ -3546,10 +3580,17 @@ module kf_shell() {
             hull() {
                 translate([kb_corner_r, kb_corner_r, 0])           cylinder(h = kb_front_h, r = kb_corner_r);
                 translate([kb_w - kb_corner_r, kb_corner_r, 0])    cylinder(h = kb_front_h, r = kb_corner_r);
-                translate([kb_corner_r, kb_d - kb_corner_r, 0])    cylinder(h = kb_rear_h, r = kb_corner_r);
-                translate([kb_w - kb_corner_r, kb_d - kb_corner_r, 0]) cylinder(h = kb_rear_h, r = kb_corner_r);
+                if (one_piece_bottom)   // square back corners: the sides run straight on into the plinth along the main case
+                    for (x = [0, kb_w - 2*kb_corner_r]) translate([x, kb_d - 2*kb_corner_r, 0]) cube([2*kb_corner_r, 2*kb_corner_r, kb_back_h]);
+                else {
+                    translate([kb_corner_r, kb_d - kb_corner_r, 0])    cylinder(h = kb_rear_h, r = kb_corner_r);
+                    translate([kb_w - kb_corner_r, kb_d - kb_corner_r, 0]) cylinder(h = kb_rear_h, r = kb_corner_r);
+                }
             }
-            translate([-1, -1, -1]) cube([kb_w + 2, kb_d + 2, kb_cap_h + 1]); // flat shelf behind the keyboard
+            if (one_piece_bottom)   // no shelf: everything under the keyboard plane, carried on to the back face
+                translate([0, 0, kb_front_h]) rotate([kb_slope_deg, 0, 0]) translate([-500, -500, -1000]) cube([1000, 1000, 1000]);
+            else
+                translate([-1, -1, -1]) cube([kb_w + 2, kb_d + 2, kb_cap_h + 1]); // flat shelf behind the keyboard
         }
         kf_hollow_int();
         kf_hollow_int(kb_w/2);
@@ -3584,8 +3625,11 @@ module kf_shell() {
             if (r1z1 > r1z0) {
                 translate([ribbon_x, ry0, r1z0])
                     cube([ribbon_w, kb_pocket_y1 - 1 - ry0, r1z1 - r1z0]);                 // in front of the roof: full height
-                translate([ribbon_x, kb_pocket_y1 - 1, r1z0])
-                    cube([ribbon_w, (ry0 + 70.8) - (kb_pocket_y1 - 1), max(0.01, min(r1z1, kbA_roof_z) - r1z0)]);
+                intersection() {
+                    translate([ribbon_x, kb_pocket_y1 - 1, r1z0])
+                        cube([ribbon_w, (ry0 + 70.8) - (kb_pocket_y1 - 1), max(0.01, min(r1z1, kbA_roof_z) - r1z0)]);
+                    if (one_piece_bottom) kbA_tunnel_ceiling();   // ... nor into its sloped roof in the one-piece build
+                }
             }
             if (r2z1 > r2z0)
                 translate([ribbon_x, kb_d_key-70.8-1, r2z0])  cube([ribbon_w, 70.8-8, r2z1 - r2z0]);
@@ -3655,17 +3699,40 @@ module kb_boardA_bay() {
             cube([kbpcb_w + 2*kbA_bay_clr, (kb_pocket_y1 + 0.5) - (kbA_y_lo - kbA_bay_clr), 80]);
         translate([0, 0, 0.3 + kb_raise]) rotate([kb_slope_deg, 0, 0]) translate([-500, -500, -1000]) cube([1000, 1000, 1000]);
     }
-    // (b) tunnel under the shelf, out to the back wall's inner face
-    translate([kbA_x_lo - kbA_bay_clr, kb_pocket_y1 - 1, kbA_floor_z])
-        cube([kbpcb_w + 2*kbA_bay_clr, kbA_wall_y0 - (kb_pocket_y1 - 1), kbA_roof_z - kbA_floor_z]);
+    // (b) tunnel under the shelf, out to the back wall's inner face. One-piece (printed flat): its roof is a 45-degree
+    // wedge instead of a flat 10mm cantilever -- full height at the pocket, stepping down toward the PCB-edge wall -- so
+    // it prints without support. At the wall it still clears the faceplate window top (fp_z1) and the USB jack by ~9mm.
+    tw = kbpcb_w + 2*kbA_bay_clr;
+    if (one_piece_bottom)
+        intersection() {
+            translate([kbA_x_lo - kbA_bay_clr, kb_pocket_y1 - 1, kbA_floor_z])
+                cube([tw, kbA_wall_y0 - (kb_pocket_y1 - 1), kbA_roof_z - kbA_floor_z]);
+            kbA_tunnel_ceiling();
+        }
+    else
+        translate([kbA_x_lo - kbA_bay_clr, kb_pocket_y1 - 1, kbA_floor_z])
+            cube([tw, kbA_wall_y0 - (kb_pocket_y1 - 1), kbA_roof_z - kbA_floor_z]);
+}
+// One-piece: the space under the tunnel's sloped roof -- kbA_roof_z at the pocket's rear edge, dropping one_piece_oh_k mm
+// per mm toward the PCB-edge wall (~48 degrees from horizontal: steeper than 45, so it prints without support).
+one_piece_oh_k = 1.1;
+module kbA_tunnel_ceiling() {
+    translate([0, kb_pocket_y1, kbA_roof_z]) rotate([-atan(one_piece_oh_k), 0, 0]) translate([-500, -500, -1000]) cube([1000, 1000, 1000]);
 }
 // CABLE BAY: everything between the PCB-edge wall and the back face, kb_bay_x0..kb_bay_x1 wide, floor to the
 // roof underside. Open at the back face -- the main case's front wall closes it when the keyboard is docked.
 // The keyboard's roof/shelf carries on over it (the overhang that hides the cable). The bay is also where
 // the coiled slack of the jumper lives.
 module kb_cable_bay() {
-    translate([kb_bay_x0, kbA_wall_y1, kbA_floor_z])
-        cube([kb_bay_x1 - kb_bay_x0, kb_d - kbA_wall_y1 + 1, kbA_roof_z - kbA_floor_z]);
+    if (one_piece_bottom)   // printed flat, the roof over the bay is a cantilever off the PCB-edge wall: 45-degree underside,
+        hull() {            // lowest at that wall, full height at the open back face
+            translate([kb_bay_x0, kbA_wall_y1 - 0.01, kbA_floor_z])
+                cube([kb_bay_x1 - kb_bay_x0, 0.01, kbA_roof_z - one_piece_oh_k*kb_cable_bay_d - kbA_floor_z]);
+            translate([kb_bay_x0, kb_d, kbA_floor_z]) cube([kb_bay_x1 - kb_bay_x0, 1, kbA_roof_z - kbA_floor_z]);
+        }
+    else
+        translate([kb_bay_x0, kbA_wall_y1, kbA_floor_z])
+            cube([kb_bay_x1 - kb_bay_x0, kb_d - kbA_wall_y1 + 1, kbA_roof_z - kbA_floor_z]);
 }
 // ---- DE-9 (DB9) joystick port on the RIGHT side of the keyboard case ----
 // Wired to board A's J6 (2x5 header) with a 10-conductor ribbon (IDC). Standard DE-9 dimensions -- CHECK THEM
@@ -3675,7 +3742,7 @@ module kb_cable_bay() {
 // It sits level with J6 (same ky) in the solid shelf zone behind the hollow -- the hollow under the keys is only
 // ~14mm tall there at this slope, too shallow for a 12.5mm connector plus its body -- and a straight ribbon
 // channel runs from the controller tunnel out to the connector's body pocket.
-de9_enabled = true;
+de9_enabled = !one_piece_bottom;   // one-piece: no DE-9 (its pocket and ribbon channel were most of the keyboard's support-needing overhangs)
 de9_y = kb_pocket_y1 - 3.5;          // just behind the keys, in the solid rim (was level with J6 -- but J6 moved 40mm forward when the
                                      // board did, and the connector's body pocket would have poked above the keyboard plane there)
 de9_z = 10.75;                       // connector centre height (flange 12.55 tall: z 4.5 .. 17.0); low, so its body pocket (top z 18.25)
@@ -4369,12 +4436,55 @@ module one_piece_seam_fill() {
     }
     translate([kb_x0 + kb_corner_r, main_front_y - 0.01, 0]) cube([kb_w - 2*kb_corner_r, 1, kb_base_t]);   // keyboard side: 1mm under its back floor edge
 }
+// Square front corners on the main base: the keyboard's back face covers them, and the rounding only left a notch
+// between the two. Fills just the sliver outside the rounded outline (0.2 into the wall, never into the cavity).
+module one_piece_front_corners() {
+    for (x0 = [-case_margin, board_w + case_margin - corner_r])
+        difference() {
+            translate([x0, main_front_y - corner_r, 0]) cube([corner_r, corner_r, parting_h]);
+            translate([0, 0, -1]) linear_extrude(parting_h + 2) offset(delta = -0.2) main_footprint_2d(case_margin, rear_margin);
+        }
+}
+// CoCo4-style floor: the keyboard's width carries on back past the main case to its rear face as a low plinth, with a
+// cove (concave quarter-round) up into the main base's side walls. Only outside the main footprint -- under the main
+// case it would plug the floor vents. The cove is stacked outline offsets, so it follows the main's rounded rear
+// corners, and is cut off flush with the rear face.
+one_piece_plinth_h = kb_base_t;   // plinth top = the keyboard's floor top
+one_piece_cove_r   = 8;
+module one_piece_plinth_plan() {
+    y1 = main_front_y + kb_corner_r;   // under the keyboard's rounded back corners, so the plinth carries its side line straight on
+    hull() {
+        translate([kb_x0 + kb_corner_r, -rear_margin + kb_corner_r]) circle(r = kb_corner_r);
+        translate([kb_x0 + kb_w - kb_corner_r, -rear_margin + kb_corner_r]) circle(r = kb_corner_r);
+        translate([kb_x0, y1 - 0.01]) square([kb_w, 0.01]);
+    }
+}
+function one_piece_cove_off(t) = one_piece_cove_r - sqrt(max(0, one_piece_cove_r^2 - (one_piece_cove_r - t)^2));
+module one_piece_plinth() {
+    n = 12;  R = one_piece_cove_r;  z0 = one_piece_plinth_h;
+    difference() {
+        union() {
+            linear_extrude(z0) one_piece_plinth_plan();
+            intersection() {
+                union() for (i = [0 : n - 1])
+                    hull() for (t = [i*R/n, (i + 1)*R/n])
+                        translate([0, 0, z0 - 0.01 + t]) linear_extrude(0.01)
+                            offset(delta = one_piece_cove_off(t)) main_footprint_2d(case_margin, rear_margin);
+                translate([-500, -rear_margin, 0]) cube([1000, main_front_y + rear_margin, z0 + R + 1]);
+                linear_extrude(z0 + R + 1) one_piece_plinth_plan();
+            }
+        }
+        translate([0, 0, -1]) linear_extrude(z0 + R + 3) offset(delta = -0.2) main_footprint_2d(case_margin, rear_margin);
+    }
+}
 module bottom_one_piece() {
     assert(one_piece_bottom, "part \"bottom_one_piece\" needs one_piece_bottom = true (it sets kb_feet so the undersides line up)");
     union() {
         main_case_bottom();
         kb_place() kb_case_bottom(joiners = false);
         one_piece_seam_fill();
+        one_piece_front_corners();
+        one_piece_plinth();
     }
 }
 
