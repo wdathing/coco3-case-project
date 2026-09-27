@@ -84,6 +84,15 @@ keyboard_attached = false;
 // direction, turned off for now (magnets alone are enough of an
 // interlock to test with); flip back to true to bring the tabs back.
 lip_socket_tabs_enabled = false;
+// ONE-PIECE BOTTOM (big printers, e.g. the Sovol SV08 Max): the main bottom and the keyboard shell print as a single
+// part ("bottom_one_piece"). The keyboard goes on the same 5mm stick-on feet as the main case (kb_feet), so the two
+// undersides are one flat plane -- no supports. That lifts the keyboard 5mm, and the main top's front skirt (which is
+// derived from the keyboard's shelf height) grows 5mm with it: print the main top from THIS setting too
+// (stl/main_top_whole_1p.stl). No magnets, bolts or joiner keys -- keyboard_attached is ignored.
+one_piece_bottom = false;
+kb_join_magnets = !one_piece_bottom && !keyboard_attached;
+kb_join_bolts   = !one_piece_bottom && keyboard_attached;
+kb_join_keys    = !one_piece_bottom;   // the stepped bow-tie keys across the keyboard/main seam
 
 /* [Height stack — Multipak compatibility] */
 oem_boss_height   = 22.25;  // REAL (measured by user)
@@ -524,9 +533,10 @@ kb_raise = 3;          // the whole keyboard plane -- pocket floor AND top surfa
                        // at 8 deg, at the cost of 1mm of main-case tower (the skirt follows the keyboard, see kb_match_skirt).
 kb_front_h = kb_pocket_depth + kb_raise;   // shell height at the FRONT edge (the "bottom front height")
 kb_slope_deg = 8;      // keyboard-plane rise toward the back (15 was tried; 8 gets the overall height back)
-kb_feet = false;       // false: this shell sits directly on the desk (no stick-on feet), so its
+kb_feet = one_piece_bottom;  // false: this shell sits directly on the desk (no stick-on feet), so its
                        // base plane is new_foot_height BELOW the main case's floor plane --
-                       // lowers the whole keyboard relative to the main case's skirt
+                       // lowers the whole keyboard relative to the main case's skirt.
+                       // true (one_piece_bottom): on the same feet as the main case, one flat underside
 kb_dz = kb_feet ? 0 : new_foot_height; // kb-frame z = main-frame z + kb_dz
 kb_wall = 3;
 kb_corner_r = 8;
@@ -3118,10 +3128,10 @@ module main_case_bottom() {
                     // from this same union, so the boss needs to already be part of it or
                     // the cut has nothing here yet to remove (this was the actual bug: the
                     // solid, added afterward, just plugged the floor's own hole from above)
-                if (!keyboard_attached) main_magnet_pads();
+                if (kb_join_magnets) main_magnet_pads();
                 main_faceplate_stops();
-                main_km_pads();
-                if (!keyboard_attached && lip_socket_tabs_enabled) main_lip_socket();
+                if (kb_join_keys) main_km_pads();
+                if (kb_join_magnets && lip_socket_tabs_enabled) main_lip_socket();
             }
             main_faceplate_window(); // replaces the separate USB / LED / button cutouts: the shared faceplate carries them now
             main_faceplate_floor_pilots();
@@ -3137,9 +3147,9 @@ module main_case_bottom() {
             main_usbc_trigger_standoffs_holes(); // same reason, cut last
             main_topbottom_screw_boss_bottom_holes(); // same reason, cut last
             main_floor_vents();
-            main_km_pockets();
-            if (!keyboard_attached) main_magnet_pockets();
-            if (keyboard_attached) main_kb_bolt_holes();
+            if (kb_join_keys) main_km_pockets();
+            if (kb_join_magnets) main_magnet_pockets();
+            if (kb_join_bolts) main_kb_bolt_holes();
         }
         // main_cn3_shelf() / main_cn3_pedestal() / main_cn3_new_standoff()
         // added here, same reasoning as main_cable_raceway() above --
@@ -3275,74 +3285,98 @@ module main_case_top() {
 // ---- bed-size splitting (board is 280mm > 250mm bed) ----
 main_split_x = board_w/2 + BOARD_X_OFF*0; // split roughly at the midpoint; move to
                                           // dodge the cartridge slot / tall tower if needed
-module main_case_bottom_left() {
-    intersection() {
-        main_case_bottom();
-        translate([-500,-500,-500]) cube([main_split_x+500, 2000, 2000]);
-    }
-    // Simple alignment pins + bolt bosses at the seam, each rooted to the
-    // FLOOR with a vertical post. Confirmed via the STL connected-
-    // components check that this matters: at yy=30 the pin sits in open
-    // interior space (no wall, standoff, or other feature anywhere near
-    // it), so the pin was floating -- disconnected from the body entirely
-    // -- regardless of how far it overlapped past the split plane (tried
-    // 1mm of overlap first; didn't help, because the problem was never
-    // about the split-plane boundary, it was that nothing solid was there
-    // at all). The floor (Z=0 to new_floor_t) is the one thing that's
-    // reliably solid EVERYWHERE in the footprint, so rooting each pin to
-    // it with a post guarantees connectivity regardless of what's nearby.
-    pin_post_d = 8;
-    for (yy = [30, main_depth-30]) {
-        translate([main_split_x - 1, yy, parting_h/2])
-            rotate([0,90,0]) cylinder(d=6, h=9);
-        translate([main_split_x - 1, yy, 0])
-            cylinder(d=pin_post_d, h=parting_h/2);
-    }
+
+// SEAM LUGS -- how the left/right halves join (main bottom and main top alike). Each lug is a solid block straddling the
+// seam, main_seam_lug_l each side, rooted to the floor / roof / rear wall, with:
+//   * one M3 socket-head screw along X: head recessed in the LEFT half (counterbore from the lug's outer face), hex nut
+//     in a slot in the RIGHT half. The slot runs from the nut out through the lug's free face (up in the bottom, down
+//     in the top), which is also "up" as each shell prints, so the nut drops in. M3x10 (M3x12 also fits).
+//   * one printed alignment pin on the LEFT half, into a socket in the RIGHT half.
+// Placed from sections of the shells at the seam (nothing else is solid there except the floor, roof and rear wall):
+//   bottom: rear (against the rear wall, clear of JK4's solder tabs above) and mid (between the centre vent bank and
+//           board B's rear edge, merging with the CN4 rib). Board B covers the seam from there to the front wall.
+//   top:    rear (under the roof, behind the drives), mid (under the roof between the rear and front drive brackets,
+//           above the drives) and front (under the drive-bay floor slab, above the motherboard).
+// All screws go in from the left with the drives out: install drives after the halves are bolted.
+main_seam_lug_l      = 11;    // lug length each side of the seam (swallows the 5mm spine ribs at X 129-151)
+main_seam_screw_d    = 3.4;   // M3 clearance
+main_seam_head_d     = 6.2;   // M3 socket head (5.5) + clearance
+main_seam_head_web   = 4;     // material between the screw head and the seam
+main_seam_nut_af     = 5.5;   // M3 nut across flats
+main_seam_nut_t      = 2.4;
+main_seam_nut_clr    = 0.3;
+main_seam_nut_web    = 3;     // material between the seam and the nut
+main_seam_pin_d      = 5;
+main_seam_pin_l      = 6;
+main_seam_pin_clr    = 0.2;   // radial
+main_seam_pin_chamfer = 0.8;
+// [y0, y1, z0, z1, screw y, screw z, pin y, pin z, slot direction (+1 up / -1 down)]
+main_seam_rear_in_y = -(rear_margin - wall);   // rear wall inner face
+main_seam_drive_top = floppy_opening_z0 + floppy_h + floppy_fit_clear_h;
+main_seam_lugs_bottom = [
+    [main_seam_rear_in_y - 0.5, 15, 1, 15,   3.5, 8,   10, 8,   +1],
+    [board_d*0.35 + vent_slot_len/2 + 0.8, main_kbpcb_origin[1] - 1.4, 1, 15,   80, 8.5,   89, 8.5,   +1],
+];
+main_seam_lugs_top = [
+    [main_seam_rear_in_y - 0.5, 15, 82, rear_tower_h - wall + 0.5,   3.5, 88,   10, 88,   -1],
+    [83, 100, main_seam_drive_top + 1.7, rear_tower_h - wall + 0.5,   87.5, 90,   95.5, 90,   -1],
+    [138.5, 157, 38, bay_face_z0 - wall + 0.4,   144, 42.5,   152, 42.5,   -1],
+];
+module main_seam_lug_blocks(lugs, side) {   // side -1 = left half, +1 = right half
+    for (g = lugs)
+        translate([side < 0 ? main_split_x - main_seam_lug_l : main_split_x, g[0], g[2]])
+            cube([main_seam_lug_l, g[1] - g[0], g[3] - g[2]]);
 }
-module main_case_bottom_right() {
-    difference() {
-        intersection() {
-            main_case_bottom();
-            translate([main_split_x,-500,-500]) cube([2000, 2000, 2000]);
+module main_seam_lug_holes(lugs, side) {
+    L = main_seam_lug_l;
+    for (g = lugs) {
+        translate([main_split_x - L - 1, g[4], g[5]]) rotate([0, 90, 0]) cylinder(d = main_seam_screw_d, h = 2*L + 2);
+        if (side < 0) {
+            translate([main_split_x - L - 1, g[4], g[5]]) rotate([0, 90, 0])
+                cylinder(d = main_seam_head_d, h = L + 1 - main_seam_head_web);
+        } else {
+            nw = main_seam_nut_af + 2*main_seam_nut_clr;
+            slot_h = (g[8] > 0 ? g[3] - g[5] : g[5] - g[2]) + 1;
+            translate([main_split_x + main_seam_nut_web, g[4], g[5]]) {
+                rotate([0, 90, 0])   // hex corners point +/-Z, flats face +/-Y: the slot's width is the across-flats
+                    cylinder(d = nw / cos(30), h = main_seam_nut_t + main_seam_nut_clr, $fn = 6);
+                translate([0, -nw/2, g[8] > 0 ? 0 : -slot_h])
+                    cube([main_seam_nut_t + main_seam_nut_clr, nw, slot_h]);
+            }
+            translate([main_split_x - 0.01, g[6], g[7]]) rotate([0, 90, 0])
+                cylinder(d = main_seam_pin_d + 2*main_seam_pin_clr, h = main_seam_pin_l + 0.6);
         }
-        for (yy = [30, main_depth-30])
-            translate([main_split_x, yy, parting_h/2])
-                rotate([0,90,0]) cylinder(d=6.4, h=10);
     }
 }
-// Split-line alignment pins were centered at a fixed Z midpoint between
-// parting_h and rear_tower_h -- fine back when rear_tower_h was ~62, but
-// with the tower now much taller (bay-stack-driven), that midpoint lands
-// deep in the hollow interior, nowhere near the roof (the only solid
-// material at X=main_split_x, dead center of the case, far from every
-// wall). Caught as a disconnected pin fragment. Fixed the same way the
-// BOTTOM shell's own split pins already were once (root to whatever's
-// reliably solid) -- here that's the roof, at its own LOCAL height
-// (local_wedge_h(), not a flat rear_tower_h assumption -- the second pin,
-// at yy=main_depth-30, sits past main_break1_y in the sloped ramp, where
-// the roof is already lower than rear_tower_h), embedded 1mm up into its
-// solid thickness for a genuine overlap, not just a touch.
-function main_pin_z(yy) = local_wedge_h(yy, rear_tower_h, front_deck_h) - wall - 1;
-module main_case_top_left() {
-    intersection() {
-        main_case_top();
-        translate([-500,-500,-500]) cube([main_split_x+500, 2000, 2000]);
-    }
-    for (yy = [30, main_depth-30])
-        translate([main_split_x, yy, main_pin_z(yy)])
-            rotate([0,90,0]) cylinder(d=6, h=8);
-}
-module main_case_top_right() {
-    difference() {
-        intersection() {
-            main_case_top();
-            translate([main_split_x,-500,-500]) cube([2000, 2000, 2000]);
+module main_seam_pins(lugs) {
+    for (g = lugs)
+        translate([main_split_x - 0.01, g[6], g[7]]) rotate([0, 90, 0]) {
+            cylinder(d = main_seam_pin_d, h = main_seam_pin_l - main_seam_pin_chamfer + 0.01);
+            translate([0, 0, main_seam_pin_l - main_seam_pin_chamfer])
+                cylinder(d1 = main_seam_pin_d, d2 = main_seam_pin_d - 2*main_seam_pin_chamfer, h = main_seam_pin_chamfer);
         }
-        for (yy = [30, main_depth-30])
-            translate([main_split_x, yy, main_pin_z(yy)])
-                rotate([0,90,0]) cylinder(d=6.4, h=10);
-    }
 }
+module main_seam_half(lugs, side) {
+    difference() {
+        union() {
+            intersection() {
+                children();
+                if (side < 0) translate([-500, -500, -500]) cube([main_split_x + 500, 2000, 2000]);
+                else          translate([main_split_x, -500, -500]) cube([2000, 2000, 2000]);
+            }
+            main_seam_lug_blocks(lugs, side);
+        }
+        main_seam_lug_holes(lugs, side);
+    }
+    if (side < 0) main_seam_pins(lugs);
+}
+module main_case_bottom_left()  { main_seam_half(main_seam_lugs_bottom, -1) main_case_bottom(); }
+module main_case_bottom_right() { main_seam_half(main_seam_lugs_bottom, +1) main_case_bottom(); }
+module main_case_top_left()     { main_seam_half(main_seam_lugs_top, -1) main_case_top(); }
+module main_case_top_right()    { main_seam_half(main_seam_lugs_top, +1) main_case_top(); }
+echo(str("Seam lugs: top mid lug bottom ", main_seam_lugs_top[1][2], " vs drive top ", main_seam_drive_top,
+         "; bottom mid lug ", main_seam_lugs_bottom[1][0], "..", main_seam_lugs_bottom[1][1],
+         " (vents end ", board_d*0.35 + vent_slot_len/2, ", board B from ", main_kbpcb_origin[1], ")"));
 
 // Board A (Pico, coco-keyboard -> USB), rotated 180deg from board B in the main case.
 kbA_setback = kbpcb_edge_poke + 0.7;   // board's USB edge -> the inner face of the wall that sits AT the PCB's edge. The
@@ -3940,7 +3974,7 @@ module kb_bridge_plate(placed = false) {
     yb0 = min([for (h = bp_b_holes()) h[1]]) - 6;
     ya1 = max([for (h = bp_a_holes()) h[1]]) + 6;
     y_r0 = F + 1;                        // riser start (in the cable bay, between the two walls)
-    translate(placed ? [0, 0, 0] : [-ax0, -yb0, -za])
+    translate(placed ? [0, 0, 0] : [-(bp_latch ? min(ax0, board_w/2 - fp_len/2) : ax0), -yb0, -za])
     difference() {
         union() {
             translate([bx0, yb0, zb]) cube([bx1 - bx0, y_r0 + 0.01 - yb0, bp_t]);                     // main end
@@ -3949,9 +3983,50 @@ module kb_bridge_plate(placed = false) {
                 translate([max(ax0, bx0), y_r0 + dz, za]) cube([min(ax1, bx1) - max(ax0, bx0), 0.01, bp_t]);
             }
             translate([ax0, y_r0 + dz - 0.01, za]) cube([ax1 - ax0, ya1 - (y_r0 + dz) + 0.01, bp_t]); // keyboard end
+            if (bp_latch) kb_place() bp_latch_kb();
         }
-        for (h = bp_b_holes()) translate([h[0], h[1], zb - 1]) cylinder(d = bp_hole_d, h = bp_t + 2);
+        for (h = bp_b_holes())   // slotted front-to-back (bp_slot each way) so the snap and the wall bolts can't fight the plate
+            hull() for (s = [-1, 1]) translate([h[0], h[1] + s*bp_slot, zb - 1]) cylinder(d = bp_hole_d, h = bp_t + 2);
         for (h = bp_a_holes()) translate([h[0], h[1], za - 1]) cylinder(d = bp_hole_d, h = bp_t + 2);
+    }
+}
+
+// ---- Spring latch into the keyboard (bp_latch) ----
+// Clicks into the snap grooves the keyboard_faceplate uses (fp_grooves in the keyboard window's end walls), so the keyboard
+// shell is unchanged. A crossbar across the cable bay, on the plate's keyboard-end plane, carries a flat finger at each
+// window end that runs forward through the bay into the wall's window, with the faceplate's barb on its tip. The fingers lie
+// in the plate's plane and flex sideways (along the layers, as the faceplate's do). The barbs only need to overlap the
+// grooves: they fill the groove's top bp_barb_zl (the groove spans z fp_z0+0.25 .. +4.55, the plate starts at kbA_pcb_z).
+// The finger tips stop 0.2 short of the solid behind the window ends. Assembly: plate loosely screwed into the main bottom,
+// push the keyboard home (click), drive the 3 wall bolts, then tighten the plate. Release: bolts out, pull firmly (the
+// barb's back flank is ~50 deg), or pry the fingers inward from the cable bay.
+bp_latch = true;
+bp_slot = 1;            // main-end screw holes slotted this far each way (Y)
+bp_fin_w = fp_finger_w; // finger width (X) -- same section as the faceplate's
+bp_fin_h = 6;           // finger height (Z), from the plate's underside
+bp_fin_gap = fp_slot_w; // gap between finger and crossbar
+bp_barb_zl = 1.2;       // barb height (Z)
+bp_cross_d = 7;         // crossbar depth (along the bay) -- reaches the keyboard-end plate past the riser
+module bp_latch_kb() {  // keyboard frame
+    z = kbA_pcb_z;
+    y_tip = kb_plate_y0;          // the faceplate's inner face = where its barbs sit
+    y_root = kb_d - 0.3;          // just inside the keyboard's back face
+    x0 = kb_plate_x0;  x1 = kb_plate_x1;
+    // crossbar, stopping short of the fingers
+    translate([x0 + bp_fin_w + bp_fin_gap, y_root - bp_cross_d, z])
+        cube([x1 - x0 - 2*(bp_fin_w + bp_fin_gap), bp_cross_d, bp_t]);
+    for (e = [0, 1]) {
+        xf = e == 0 ? x0 : x1 - bp_fin_w;
+        translate([xf, y_tip, z]) cube([bp_fin_w, y_root - y_tip, bp_fin_h]);                  // finger
+        translate([e == 0 ? x0 : x1 - bp_fin_w - bp_fin_gap - 1, y_root - 1.2, z])            // root tab joining it to the crossbar
+            cube([bp_fin_w + bp_fin_gap + 1, 1.2, bp_t]);
+    }
+    // barb at the TOP of the groove (the barb zone the faceplate uses, kb_plate_z0-relative), ending at its nominal top
+    bz1 = kb_plate_z0 + fp_barb_z0 + fp_barb_zl;
+    assert(bz1 - bp_barb_zl >= z, "latch barb would hang below the bridge plate's underside");
+    translate([0, 0, bz1 - bp_barb_zl]) linear_extrude(height = bp_barb_zl) {
+        translate([x0, y_tip]) mirror([1, 0]) fp_barb_2d();
+        translate([x1, y_tip]) fp_barb_2d();
     }
 }
 
@@ -4067,7 +4142,7 @@ module kb_case_bottom(joiners = true) {   // joiners = false for the one-piece p
                 kb_plate_slot();
                 kb_plate_grooves();
                 if (de9_enabled) kb_de9();
-                if (!keyboard_attached && lip_socket_tabs_enabled) kb_socket_pockets();
+                if (kb_join_magnets && lip_socket_tabs_enabled) kb_socket_pockets();
             }
             kb_boardA_floor();
             kb_boardA_bosses();
@@ -4078,10 +4153,10 @@ module kb_case_bottom(joiners = true) {   // joiners = false for the one-piece p
         kb_bezel_screw_holes();
         kb_art_m2_head_recesses();
         if (joiners) kb_joiner_pockets();   // after the floor refill, which would otherwise fill the one at y=118
-        kb_km_pockets();
+        if (kb_join_keys) kb_km_pockets();
         // cut LAST, after the blocks are unioned in, so nothing can fill them
-        if (!keyboard_attached) kb_magnet_pockets();
-        if (keyboard_attached)  kb_bolt_pilots();
+        if (kb_join_magnets) kb_magnet_pockets();
+        if (kb_join_bolts)   kb_bolt_pilots();
     }
 }
 
@@ -4276,6 +4351,34 @@ module kb_bz_half(right) {
 }
 
 // ============================================================================
+// ONE-PIECE BOTTOM -- main bottom + keyboard shell as a single print (one_piece_bottom = true)
+// ============================================================================
+// The keyboard shell in its docked position (kb_place), fused to the main bottom. With kb_feet on, both stand on z=0.
+// The seam strip fills the V-groove the main bottom's 2mm bottom fillet would leave along the joint. It stops just above
+// the fillet: higher up the wall has the PCB-edge lip relief at its top, which must stay. The shared faceplate window
+// stays open, so the cable bay still connects the two boards and the keyboard faceplate goes in through the main
+// case's window.
+module one_piece_seam_fill() {
+    h = bottom_fillet_r + 1;
+    difference() {
+        intersection() {
+            solid_from_footprint(case_margin, 0, h, rear_margin);   // clipped to the main case's plan (its rounded corners)
+            translate([-500, main_front_y - wall, 0]) cube([1000, wall + 0.01, h]);
+        }
+        translate([board_w/2 - fp_len/2, main_front_y - wall - 1, fp_z0]) cube([fp_len, wall + 2, h]);
+    }
+    translate([kb_x0 + kb_corner_r, main_front_y - 0.01, 0]) cube([kb_w - 2*kb_corner_r, 1, kb_base_t]);   // keyboard side: 1mm under its back floor edge
+}
+module bottom_one_piece() {
+    assert(one_piece_bottom, "part \"bottom_one_piece\" needs one_piece_bottom = true (it sets kb_feet so the undersides line up)");
+    union() {
+        main_case_bottom();
+        kb_place() kb_case_bottom(joiners = false);
+        one_piece_seam_fill();
+    }
+}
+
+// ============================================================================
 // PART SELECTOR
 // ============================================================================
 // Set to one of:
@@ -4298,6 +4401,8 @@ module kb_bz_half(right) {
 //   "bezel_oem_whole/_left/_right"      -- bezel over the stock keyboard (print orientation: top face down)
 //   "bezel_artemis_whole/_left/_right"  -- Artemis STL + filler/skin, one piece (same orientation)
 //   "bezel_fit_oem" / "bezel_fit_artemis" -- the bezel sitting in the keyboard shell, for looking at
+//   "bottom_one_piece"     -- main bottom + keyboard shell as one part (needs one_piece_bottom = true; ~334 x 341)
+//                             -> print main_top_* with one_piece_bottom = true as well (its skirt is 5mm taller)
 part = "main_bottom_whole";
 
 // exploded gap between the bottom tray and top shell in "preview" only, so
@@ -4401,6 +4506,8 @@ if (part == "preview") {
     kb_bz_print() kb_bz_half(false) kb_bezel_artemis();
 } else if (part == "bezel_artemis_right") {
     kb_bz_print() kb_bz_half(true) kb_bezel_artemis();
+} else if (part == "bottom_one_piece") {
+    bottom_one_piece();
 } else if (part == "bezel_fit_oem" || part == "bezel_fit_artemis") {   // bezel in place in the keyboard shell, for looking at
     color("DimGray") kb_case_bottom();
     color("Goldenrod") kb_plane() if (part == "bezel_fit_oem") kb_bezel_oem(); else kb_bezel_artemis();
