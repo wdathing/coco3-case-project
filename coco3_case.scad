@@ -90,6 +90,16 @@ lip_socket_tabs_enabled = false;
 // derived from the keyboard's shelf height) grows 5mm with it: print the main top from THIS setting too
 // (stl/main_top_whole_1p.stl). No magnets, bolts or joiner keys -- keyboard_attached is ignored.
 one_piece_bottom = false;
+// HINGED LID: the back plate (rear wall, with all its connector cutouts and the DV I/O panel) becomes part of the
+// bottom, and the rest of the top is a lid that swings up on a hinge along the rear top edge -- the drives ride up
+// with it -- for access to the drive bays and the motherboard. See HINGED LID near the seam lugs. Parts keep their
+// usual names (main_top_* = the lid, main_bottom_* / bottom_one_piece include the plate); export them to hinged-stls/.
+main_hinged = false;
+// The one-piece base WITH the hinged lid gets extra strength work (all gated on this, so no other build changes):
+// solid posts up the two back corners, the decorative groove round the base's top edge filled across the back (it sat
+// under the back plate as a support-hungry notch; kept along the sides), the rear PCB ribs' wall step carried up the
+// plate as fins (the leftmost rib moved to sit centred between its two ports), and much rounder rear port openings.
+onepiece_hinged = one_piece_bottom && main_hinged;
 kb_join_magnets = !one_piece_bottom && !keyboard_attached;
 kb_join_bolts   = !one_piece_bottom && keyboard_attached;
 kb_join_keys    = !one_piece_bottom;   // the stepped bow-tie keys across the keyboard/main seam
@@ -1142,15 +1152,27 @@ usbc_trigger_x        = 264; // moved 8mm right (was 272) -- the left-rear topbo
                                // board's old position (span 261-283) overlapped
 usbc_trigger_cut_w     = 14; // rear cutout for the USB-C port + cable clearance
 usbc_trigger_cut_h     = 7;
-usbc_trigger_cut_z     = 6;  // cutout vertical center above the floor
 usbc_trigger_board_w   = 22;
 usbc_trigger_board_d   = 22;
+// The real USB-C power board (no mounting holes): PCB 16.2 x 10.6 x 1.6, a TOP-MOUNT USB-C receptacle on one short edge
+// overhanging the PCB by 1.3 (17.5 overall), the power cable soldered through-hole ~1mm in from the opposite edge. It
+// sits in usbc_clip() (part "usbc_clip"), a small plate screwed onto the four bosses below -- the board is 10.6 wide and
+// the gap between the bosses only ~9.4, so it rides on top of them -- and the rear cutout is centred on its port.
+usbc_pcb_w      = 10.6;
+usbc_pcb_l      = 16.2;
+usbc_pcb_t      = 1.6;
+usbc_conn_over  = 17.5 - 16.2;   // receptacle past the PCB edge
+usbc_conn_h     = 3.2;           // receptacle height (typical); its centre sets the cutout height
+usbc_clip_t     = 3.2;           // plate thickness (M3 pan/button heads sink into it)
 usbc_trigger_boss_h    = 6;  // was 3, raised +3mm per direction ("raised about 3mm
                               // including taller standoff so I get better screw
                               // grabbing... self tapping m3 is fine for that in all
                               // conditions") -- same reasoning/precedent as the kbpcb
                               // boss height increase above.
 usbc_trigger_hole_d    = m3_pilot_d; // self-tapping M3 confirmed fine here, per direction
+usbc_trigger_cut_z     = 6;  // cutout vertical center above the floor
+// NOTE: on usbc_clip() the port centre is at usbc_trigger_boss_h + usbc_clip_t + usbc_pcb_t + usbc_conn_h/2 (12.4), not
+// here -- the bottom is deliberately left as is until the clip is test-fitted.
 module main_usbc_trigger_cutout() {
     // Through the (bottom-shell) rear wall, at floor level -- the board
     // sits on its own low bosses (usbc_trigger_boss_h) just inside, so its
@@ -1178,6 +1200,72 @@ module main_usbc_trigger_standoffs_holes() {
     for (dx = [-1, 1])
         translate([usbc_trigger_x + dx*(usbc_trigger_board_w/2 - 3), inner_wall_y + usbc_trigger_board_d - 3, 0])
             standoff_peg_hole(0, 0, usbc_trigger_hole_d, usbc_trigger_boss_h);
+}
+
+// ---- USB-C power board clip (part "usbc_clip") ----
+// Case frame (so it can be shown in place); printed plate-down as it sits. The board goes in front-first, tilted, its
+// front corners under two small hooks in the ~1mm beside the receptacle; then the back is pressed down until a finger on
+// each long side -- a free-standing wall in a slot through the plate, anchored at its front end, so it flexes sideways
+// along its whole 9mm length instead of bending a short stub -- snaps a small hook over the PCB's top edge near the
+// back. A low stop in front of the PCB edge (under the receptacle's overhang) takes the pull when a cable is unplugged
+// (the corner hooks stop an angled pull from lifting the front over it);
+// a low stop behind it takes the push when one is plugged in, and the cable's wires pass over it. A groove under the
+// back edge clears the cable's through-hole legs (or flush-cut them). usbc_clip_lip is the knob if the fit is too
+// tight or loose.
+usbc_clip_clr    = 0.15;   // around the PCB
+usbc_clip_lip    = 0.55;   // hook reach past the finger face (0.4 onto the PCB after usbc_clip_clr)
+usbc_clip_fin_t  = 1.0;    // finger thickness
+usbc_clip_slot   = 0.4;    // gap around each finger
+usbc_clip_head_d = 6.2;    // counterbore for an M3 pan/button head
+usbc_clip_head_h = 2.2;
+usbc_conn_side   = 1.0;    // bare PCB either side of the receptacle (from the user's board)
+usbc_clip_fhook  = 0.8;    // front corner hooks: width (X, inside that 1mm) and reach over the PCB top (Y)
+function usbc_clip_bosses() = let (iy = -(rear_margin - wall))
+    [ for (dx = [-1, 1]) for (yy = [iy + 3, iy + usbc_trigger_board_d - 3]) [usbc_trigger_x + dx*(usbc_trigger_board_w/2 - 3), yy] ];
+usbc_pcb_x0 = usbc_trigger_x - usbc_pcb_w/2;
+usbc_pcb_y0 = -(rear_margin - wall) + usbc_conn_over - 0.23;   // PCB front edge: the receptacle face ends 0.23 into the wall
+usbc_pcb_y1 = usbc_pcb_y0 + usbc_pcb_l;
+module usbc_clip() {
+    z0 = usbc_trigger_boss_h;  z1 = z0 + usbc_clip_t;  zt = z1 + usbc_pcb_t;   // plate bottom / top, PCB top
+    iy = -(rear_margin - wall);
+    px0 = usbc_trigger_x - usbc_trigger_board_w/2 - 1;  px1 = usbc_trigger_x + usbc_trigger_board_w/2 + 1;
+    py0 = iy + 0.27;  py1 = iy + usbc_trigger_board_d + 1;
+    fy0 = iy + 3 + usbc_clip_head_d/2 + 0.6;          // fingers run between the front and back screw counterbores
+    fy1 = iy + usbc_trigger_board_d - 3 - usbc_clip_head_d/2 - 0.6;
+    fxs = [usbc_pcb_x0 - usbc_clip_clr - usbc_clip_fin_t, usbc_pcb_x0 + usbc_pcb_w + usbc_clip_clr];   // finger inner faces touch the PCB outline + clr
+    difference() {
+        union() {
+            translate([px0, py0, z0]) linear_extrude(usbc_clip_t) offset(r = 1.5) offset(delta = -1.5) square([px1 - px0, py1 - py0]);
+            // front stop, under the receptacle overhang (top-mount: nothing of the connector is below the PCB's top face)
+            translate([usbc_pcb_x0, py0, z1 - 0.01]) cube([usbc_pcb_w, usbc_pcb_y0 - usbc_clip_clr - py0, usbc_pcb_t - 0.2]);
+            // front corner hooks, beside the receptacle
+            for (hx = [usbc_pcb_x0, usbc_pcb_x0 + usbc_pcb_w - usbc_clip_fhook]) {
+                translate([hx, py0, z1 - 0.01]) cube([usbc_clip_fhook, usbc_pcb_y0 - usbc_clip_clr - py0, usbc_pcb_t + 0.1 + 1.0]);
+                translate([hx, py0, zt + 0.1]) cube([usbc_clip_fhook, usbc_pcb_y0 + usbc_clip_fhook - py0, 1.0]);
+            }
+            // back stop, low so the cable's wires pass over it; kept between the back screw heads
+            translate([usbc_trigger_x - 4, usbc_pcb_y1 + usbc_clip_clr, z1 - 0.01]) cube([8, 1.2, usbc_pcb_t]);
+        }
+        for (b = usbc_clip_bosses()) {
+            translate([b[0], b[1], z0 - 1]) cylinder(d = 3.4, h = usbc_clip_t + 2);
+            translate([b[0], b[1], z1 - usbc_clip_head_h]) cylinder(d = usbc_clip_head_d, h = usbc_clip_head_h + 1);
+        }
+        // relief for the cable's through-hole legs, ~1mm in from the back edge
+        translate([usbc_pcb_x0 + 0.5, usbc_pcb_y1 - 2.5, z1 - 1.5]) cube([usbc_pcb_w - 1, 3, 2]);
+        // slots freeing the fingers from the plate on three sides (front end stays attached)
+        for (fx = fxs)
+            translate([fx - usbc_clip_slot, fy0 + 2, z0 - 1]) cube([usbc_clip_fin_t + 2*usbc_clip_slot, fy1 - fy0 - 2 + usbc_clip_slot, usbc_clip_t + 2]);
+    }
+    // the fingers: bed level up past the PCB, the hook on the inside at the free (back) end, lead-in chamfer on top
+    for (i = [0, 1]) {
+        fx = fxs[i];  in = i == 0 ? 1 : -1;   // +1: the PCB is toward +x
+        translate([fx, fy0, z0]) cube([usbc_clip_fin_t, fy1 - fy0, zt + 0.1 + 1.2 - z0]);
+        hull() {
+            translate([i == 0 ? fx + usbc_clip_fin_t - 0.01 : fx - usbc_clip_lip, fy1 - 4, zt + 0.1])
+                cube([usbc_clip_lip + 0.01, 4, 0.01]);
+            translate([i == 0 ? fx + usbc_clip_fin_t - 0.01 : fx - 0.01, fy1 - 4, zt + 0.1 + 1.2 - 0.01]) cube([0.02, 4, 0.01]);
+        }
+    }
 }
 
 // Real cartridge edge-connector envelope, per direction (replaces the
@@ -1271,14 +1359,14 @@ module main_dvio_cutouts() {
     translate([p0[0], -rear_margin + wall + 1, p0[1]]) rotate([90, 0, 0])
         linear_extrude(height = wall + 2) dvio_features_2d();
 }
-module main_dvio_bosses() {
+module main_dvio_bosses(tip = 1) {   // tip -1: point toward the floor instead (the hinged build's back plate prints floor-down)
     y_in = -rear_margin + wall;
     for (tx = [4, 57]) {
         p = dvio_pt(tx, 44);
         // teardrop pointing at the roof: the top is printed roof-down, so this boss sticks out sideways from a vertical wall
         translate([p[0], y_in - 0.5, p[1]]) rotate([-90, 0, 0]) hull() {
             cylinder(d = dvio_boss_d, h = dvio_boss_h + 0.5, $fn = 48);
-            translate([0, -1.5*dvio_boss_d/2, 0]) cylinder(d = 0.2, h = dvio_boss_h + 0.5);
+            translate([0, -tip*1.5*dvio_boss_d/2, 0]) cylinder(d = 0.2, h = dvio_boss_h + 0.5);
         }
     }
 }
@@ -1352,28 +1440,36 @@ module main_top_rear_gussets() {
         else main_top_rear_gusset(g[0], g[1]);
 }
 
+// Corner radius of a rear port opening: 2 normally. In the hinged one-piece build the ROUND connectors (the DIN jacks
+// JK1-4, the RCA video/audio J5A/B, and the RF jack) get stadium openings -- radius half the width, less a hair, so a
+// round face sitting on the board is followed all the way round (the openings start 1mm below the board surface, which
+// puts the lower semicircle's centre about where such a face's centre is). The square-bodied power switch is held to
+// 4 and the reset button to the general min side/2 - 1.5 (at most 6). SW3 stays square either way.
+function rear_notch_round(kind) = kind == "din6" || kind == "din4" || kind == "din5" || kind == "rgb_din8" || kind == "rca";
+function rear_notch_r(w, h, kind) = !onepiece_hinged ? 2
+    : rear_notch_round(kind) ? min(w, h)/2 - 0.3
+    : kind == "power_switch" ? 4 : min(6, min(w, h)/2 - 1.5);
 module main_connector_cutouts_top() {
     notch_depth = case_margin*3;
-    notch_r = 2; // per direction, "round them off a bit" -- except SW3, kept sharp/square
     for (c = board_connectors) {
         refdes = c[0]; x_real = c[1]; y = c[2]; kind = c[5];
         x = (refdes == "CN3") ? cn3_cutout_x : (refdes == "SW3") ? sw3_cutout_x : x_real;
         if (kind == "din6" || kind == "din4" || kind == "din5" || kind == "rgb_din8")
-            rim_notch_y(x, -rear_margin, 15.9, 20, notch_depth, notch_r);
+            rim_notch_y(x, -rear_margin, 15.9, 20, notch_depth, rear_notch_r(15.9, 20, kind));
         else if (kind == "rca")
-            rim_notch_y(x, -rear_margin, 10.5, 16, notch_depth, notch_r);
+            rim_notch_y(x, -rear_margin, 10.5, 16, notch_depth, rear_notch_r(10.5, 16, kind));
         else if (kind == "power_switch")
-            rim_notch_y(x, -rear_margin, 14, 14, notch_depth, notch_r);
+            rim_notch_y(x, -rear_margin, 14, 14, notch_depth, rear_notch_r(14, 14, kind));
         else if (kind == "slide_switch")
             rim_notch_y(x, -rear_margin, 10, 11, notch_depth); // SW3 -- stays sharp, per direction
         else if (kind == "reset_button")
-            rim_notch_y(x, -rear_margin, 10.5, 12, notch_depth, notch_r); // SW2: 8x8 body + clearance; 10.5 wide because the
+            rim_notch_y(x, -rear_margin, 10.5, 12, notch_depth, rear_notch_r(10.5, 12, kind)); // SW2: 8x8 body + clearance; 10.5 wide because the
                 // 2mm corner rounding eats ~1.2mm per side at the top corners of a square body
         else if (kind == "cart_slot")
             main_cart_slot_cut();
         // "cart_slot" exits the RIGHT-SIDE panel (min X, post board_pt mirror, still case_margin), all others exit the REAR panel (min Y, now rear_margin)
     }
-    rim_notch_y(rf_x, -rear_margin, 10.5, 16, notch_depth, notch_r);   // RF connector (see above)
+    rim_notch_y(rf_x, -rear_margin, 10.5, 16, notch_depth, rear_notch_r(10.5, 16, "rca"));   // RF connector (see above)
     //rim_notch_y(usbc_power_x, -rear_margin, 10, 5, notch_depth, notch_r);
 }
 
@@ -2125,7 +2221,7 @@ module main_floor_vents() {
 rear_rib_w = 2.4;
 rear_rib_depth = 10;   // was 5 -- per direction, "the main part of those should be another 5mm long from the back" 
 function rear_rib_x(refdes) = [for (c = board_connectors) if (c[0]==refdes) c[1]][0];
-rear_rib_positions = [
+rear_rib_positions_base = [
     (rear_rib_x("SW1") + rear_rib_x("JK1")) / 2 + 2, // +2: per direction, "the rib to the
         // left of JK1 needs to be 2mm further to the left" (+X = left, per this file's
         // own convention) -- the only rib between SW1 and JK1, i.e. the one immediately
@@ -2134,6 +2230,13 @@ rear_rib_positions = [
     (rear_rib_x("JK4") + rear_rib_x("J5A")) / 2, // "other side of JK4" from JK3
     (rear_rib_x("J5A") + rear_rib_x("J5B")) / 2, // between video and sound
 ];
+// Hinged one-piece: the leftmost rib (SW1/JK1) moves to the middle of the gap between those two ports' openings, so
+// its fin up the back plate (main_plate_rib_fins) sits clear of both.
+function rear_gap_mid_near(x) = let (gs = rear_gaps(), d = [for (g = gs) abs(g[0] - x)], m = min(d))
+    [for (i = [0 : len(gs) - 1]) if (d[i] == m) gs[i][0]][0];
+rear_rib_positions = onepiece_hinged
+    ? concat([rear_gap_mid_near(rear_rib_positions_base[0])], [for (i = [1 : len(rear_rib_positions_base) - 1]) rear_rib_positions_base[i]])
+    : rear_rib_positions_base;
 rib_wall_bump_h = 1.6; // per direction: "where it intersects the wall... 1.6mm higher,
                          // for a distance of 1mm from the wall only. for the rest I want
                          // it to be the same height it currently is" -- applies to every
@@ -2973,7 +3076,8 @@ main_topbottom_screw_positions_raw = concat(
     main_topbottom_screw_corners
 );
 main_topbottom_screw_positions = [
-    for (p = main_topbottom_screw_positions_raw) if (!main_screw_pos_conflicts_bay(p)) p
+    for (p = main_topbottom_screw_positions_raw)
+        if (!main_screw_pos_conflicts_bay(p) && !(main_hinged && p[1] < main_depth/2)) p   // hinged: the hinge holds the back
 ];
 
 // TOP SCREW BOSSES (heat-set inserts), rebuilt per direction: "just enough for the screw support, a
@@ -3214,7 +3318,8 @@ module main_case_bottom() {
             if (cn3_bump) main_cn3_access_cut();
             main_cable_raceway_end_cuts();
             main_cable_raceway_floor_cut();
-            main_pcb_edge_lip_relief();
+            if (!onepiece_hinged) main_pcb_edge_lip_relief();
+            else intersection() { main_pcb_edge_lip_relief(); onepiece_hinged_groove_zone(); }   // sides only, see there
             main_usbc_trigger_cutout();
             main_standoffs_holes(); // cut LAST, after every other solid is unioned in,
                                      // so nothing (e.g. the cart support platform,
@@ -3333,8 +3438,10 @@ module main_case_top() {
                 main_topbottom_screw_boss_top();
                 main_topbottom_screw_boss_top_braces();
                 main_badge_pad();
-                main_dvio_bosses();
-                main_top_rear_gussets();
+                if (!main_hinged) {          // hinged: both belong to the back plate instead (main_back_plate)
+                    main_dvio_bosses();
+                    main_top_rear_gussets();
+                }
                 main_top_spine_ribs();
             }
             main_louvers();
@@ -3389,22 +3496,36 @@ main_seam_pin_d      = 5;
 main_seam_pin_l      = 6;
 main_seam_pin_clr    = 0.2;   // radial
 main_seam_pin_chamfer = 0.8;
-// [y0, y1, z0, z1, screw y, screw z, pin y, pin z, slot direction (+1 up / -1 down)]
+// [y0, y1, z0, z1, screw y, screw z, pin y, pin z, slot direction (+1 up / -1 down), optional [y1 left, y1 right]]
 main_seam_rear_in_y = -(rear_margin - wall);   // rear wall inner face
 main_seam_drive_top = floppy_opening_z0 + floppy_h + floppy_fit_clear_h;
-main_seam_lugs_bottom = [
+main_seam_lugs_bottom = concat([
     [main_seam_rear_in_y - 0.5, 15, 1, 15,   3.5, 8,   10, 8,   +1],
     [board_d*0.35 + vent_slot_len/2 + 0.8, main_kbpcb_origin[1] - 1.4, 1, 15,   80, 8.5,   89, 8.5,   +1],
-];
+], main_hinged ? [
+    // Hinged: the back plate is part of the bottom, so its two halves get a lug of their own, on the plate's inner face
+    // above the JK4 opening (top z 41.9; bottom kept 6mm clear so the board can still be tilted in) and below the
+    // hinge. The left half stays inside the 5mm gap behind the DV I/O board (its bosses stand 5mm off the wall, its
+    // right edge at X~132), so it is only ~3mm deep there -- the head's counterbore opens out of its front face.
+    // Screw in from the left, through that gap: bolt the halves BEFORE fitting the DV I/O board.
+    [main_seam_rear_in_y - 0.5, 5.5, 48, 64,   1.1, 58,   0.5, 52,   +1,   [3.0, 5.5]],
+] : []);
+// The top's mid lug is carried forward until it fuses into the front drive brackets' bands (a printed hinged top snapped
+// across the bare 8mm of roof between the two while its supports were being broken off; applied to every split top).
+main_seam_front_band_y0 = max(floppy_notch_y0 - min(floppy_screw_front_offsets) - 12.7, floppy_rail_y0);   // as main_floppy_bay_brackets()
 main_seam_lugs_top = [
-    [main_seam_rear_in_y - 0.5, 15, 82, rear_tower_h - wall + 0.5,   3.5, 88,   10, 88,   -1],
-    [83, 100, main_seam_drive_top + 1.7, rear_tower_h - wall + 0.5,   87.5, 90,   95.5, 90,   -1],
+    main_hinged   // hinged: the rear wall is gone from the lid, and the barrel's sweep needs y < ~6.3 kept clear
+        ? [7, 21, main_seam_drive_top + 1.7, rear_tower_h - wall + 0.5,   11, 90,   17.5, 90,   -1]
+        : [main_seam_rear_in_y - 0.5, 15, 82, rear_tower_h - wall + 0.5,   3.5, 88,   10, 88,   -1],
+    [83, main_seam_front_band_y0 + 0.5, main_seam_drive_top + 1.7, rear_tower_h - wall + 0.5,   87.5, 90,   95.5, 90,   -1],
     [138.5, 157, 38, bay_face_z0 - wall + 0.4,   144, 42.5,   152, 42.5,   -1],
 ];
 module main_seam_lug_blocks(lugs, side) {   // side -1 = left half, +1 = right half
-    for (g = lugs)
+    for (g = lugs) {
+        y1 = len(g) > 9 ? (side < 0 ? g[9][0] : g[9][1]) : g[1];
         translate([side < 0 ? main_split_x - main_seam_lug_l : main_split_x, g[0], g[2]])
-            cube([main_seam_lug_l, g[1] - g[0], g[3] - g[2]]);
+            cube([main_seam_lug_l, y1 - g[0], g[3] - g[2]]);
+    }
 }
 module main_seam_lug_holes(lugs, side) {
     L = main_seam_lug_l;
@@ -3449,10 +3570,227 @@ module main_seam_half(lugs, side) {
     }
     if (side < 0) main_seam_pins(lugs);
 }
-module main_case_bottom_left()  { main_seam_half(main_seam_lugs_bottom, -1) main_case_bottom(); }
-module main_case_bottom_right() { main_seam_half(main_seam_lugs_bottom, +1) main_case_bottom(); }
-module main_case_top_left()     { main_seam_half(main_seam_lugs_top, -1) main_case_top(); }
-module main_case_top_right()    { main_seam_half(main_seam_lugs_top, +1) main_case_top(); }
+module main_case_bottom_left()  { main_seam_half(main_seam_lugs_bottom, -1) main_bottom_part(); }
+module main_case_bottom_right() { main_seam_half(main_seam_lugs_bottom, +1) main_bottom_part(); }
+module main_case_top_left()     { main_seam_half(main_seam_lugs_top, -1) { main_top_part(); main_seam_front_gussets(); } }
+module main_case_top_right()    { main_seam_half(main_seam_lugs_top, +1) { main_top_part(); main_seam_front_gussets(); } }
+// Split tops (hinged or not): a gusset from the bottom of each centre FRONT drive bracket band down to the top of the front seam
+// lug (the one under the drive-bay floor). Printed roof-down, that lug sits "above" the brackets and hung on the thin
+// slab alone. Sloped so its long face is ~42 deg from vertical as printed; it fuses into the bulkhead's bottom edge on
+// the way, and stays under the drive envelope (floppy_opening_z0), so the drives still slide in. As wide as the rail, so
+// its top merges fully into the band (anything wider leaves a flat shelf that hangs when printed roof-down).
+module main_seam_front_gussets() {
+    g = main_seam_lugs_top[2];                    // the front lug: [y0, y1, z0, z1, ...]
+    z_top = floppy_rail_z0;                       // the band's bottom edge
+    z_bot = g[3] - 0.5;                           // just into the lug's top
+    run = 0.9 * (z_top - z_bot);                  // forward reach while dropping: ~42 deg
+    by1 = floppy_notch_y0 - floppy_bulkhead_t + 0.5;   // band's front end (fused to the bulkhead's back face)
+    assert(z_top < floppy_opening_z0 - 1, "front gusset would reach into the drive envelope");
+    for (i = [-1, 1]) {
+        bay_cx = board_w/2 + i*(floppy_w + floppy_bay_gap)/2;
+        side = -i;                                // the rail on the gap side of each drive
+        rail_x = bay_cx + side*(floppy_w/2 + floppy_fit_clear_w/2 + floppy_rail_t/2);
+        x0 = rail_x - floppy_rail_t/2;
+        hull() {
+            translate([x0, by1 - 8, z_top - 0.01]) cube([floppy_rail_t, 8, 0.5]);     // along the band's bottom edge
+            translate([x0, g[0] + 0.01, z_bot]) cube([floppy_rail_t, run - 1, 0.5]);  // onto the lug's top
+        }
+    }
+}
+
+// ============================================================================
+// HINGED LID (main_hinged)
+// ============================================================================
+// The top's rear wall -- everything behind its inner face, plus the DV I/O bosses and the rear gussets that hang off it,
+// and both side walls back to the rear cartridge guide (hinge_return_y) -- is the BACK PLATE, fused onto the bottom. The rest of the top is the LID. The hinge is the case's own rounded
+// rear-top edge (edge_fillet_r): its axis is that rounding's centre line, and the barrel is cut into hinge_n knuckles
+// alternating lid / plate / lid ... (the lid owns both ends, with the rounded corners), on a hinge_pin_d rod along X.
+// Behind the axis the lid has nothing but its knuckles, so opening swings everything else up and forward, away from
+// the plate; it stops by itself somewhere past ~110 degrees when the roof's rear edge comes down onto the plate.
+// The plate's knuckles get a 45-degree chin (the plate prints floor-down with the bottom); the plate gussets taper to a
+// point at the bottom for the same reason. Screws: the two FRONT lid screws stay (they lock it shut); the rear two go.
+// NOTE: the rear connector openings are closed windows now (the plate sits on the bottom's rear wall), so the
+// motherboard goes in tilted -- rear connectors into their windows first, then lower the front.
+hinge_r       = edge_fillet_r;
+hinge_ay      = -rear_margin + edge_fillet_r;    // axis (the rear-top rounding's centre line)
+hinge_az      = rear_tower_h - edge_fillet_r;
+hinge_n       = 9;          // knuckles, odd so the lid gets both ends
+hinge_clr     = 0.4;        // radial clearance around the other part's knuckles
+hinge_gap     = 0.4;        // axial gap between knuckles
+hinge_pin_d   = 3.3;        // 3mm rod (steel, or M3 threaded rod), full width
+hinge_split_y = -rear_margin + wall;   // plate | lid: the rear wall's inner face
+hinge_split_gap = 0.3;
+// Corner returns: the plate wraps round both rear corners, taking the side walls with it as far forward as the rear
+// cartridge guide's inner face -- a U instead of a flat 77mm-tall wall (a printed test bottom was too flexible). On the
+// cartridge side the return fuses with the rear guide wall; the other side mirrors the depth.
+hinge_return_y = cn1_xy()[1] - cart_gap_at(-(case_margin - wall))/2;
+// The plate's share of the top: behind the split plane, plus each side wall back to hinge_return_y. grow > 0 is the
+// lid's cut (split gap, and 0.3 off the lid's inside where it meets a return's inner face).
+// The lid's side walls start just forward of the returns and reach the top edge, above the axis; opening, those top
+// corners swing up and BACK over the returns. Clear the returns out to the farthest such point's radius (+ hinge_clr).
+hinge_return_sweep_r = sqrt((hinge_return_y + hinge_split_gap - hinge_ay)^2 + hinge_r^2) + hinge_clr;
+module hinge_return_sweep_clear() {
+    xi0 = -(case_margin - wall);
+    xi1 = board_w + case_margin - wall;
+    hinge_cyl(hinge_return_sweep_r, hinge_x0 - 1, xi0 + 0.01);
+    hinge_cyl(hinge_return_sweep_r, xi1 - 0.01, hinge_x1 + 1);
+}
+module hinge_plate_zone(grow = 0) {
+    translate([-500, -500, -500]) cube([1000, 500 + hinge_split_y + grow, 1000]);
+    xi0 = -(case_margin - wall);             // side walls' inner faces
+    xi1 = board_w + case_margin - wall;
+    translate([-500, -500, -500]) cube([500 + xi0 + (grow > 0 ? 0.3 : 0), 500 + hinge_return_y + grow, 1000]);
+    translate([xi1 - (grow > 0 ? 0.3 : 0), -500, -500]) cube([1000, 500 + hinge_return_y + grow, 1000]);
+}
+hinge_x0 = -case_margin - 1;
+hinge_x1 = board_w + case_margin + 1;
+function hinge_seg(i) = let (w = (hinge_x1 - hinge_x0) / hinge_n) [hinge_x0 + i*w, hinge_x0 + (i + 1)*w];
+function hinge_is_lid(i) = i % 2 == 0;
+module hinge_cyl(r, x0, x1, fn = 64) { translate([x0, hinge_ay, hinge_az]) rotate([0, 90, 0]) cylinder(r = r, h = x1 - x0, $fn = fn); }
+// FRONT SEAM. The lid's lowest front edge is ~80mm below the axis, so opening moves it FORWARD before it rises -- straight
+// into the docked keyboard's back face, which the front skirt sits flat against. The lid/base seam at the front is
+// therefore an arc about the hinge axis, through the top of the keyboard's back face: the lid keeps what is inside the
+// arc and rotates along it; the sliver of front skirt (and the side walls' front-bottom corners) outside it moves to
+// the base, raising the base's front to the keyboard's height.
+hinge_front_z = kb_back_h - kb_dz;   // the keyboard back face's top, main frame (= front_deck_h)
+hinge_front_r = sqrt((main_front_y - hinge_ay)^2 + (hinge_front_z - hinge_az)^2);
+module hinge_front_arc(r) { hinge_cyl(r, hinge_x0 - 20, hinge_x1 + 20, fn = 720); }
+module main_front_band() {   // base side
+    difference() {
+        intersection() {
+            main_case_top();
+            translate([-500, main_front_y - 40, -500]) cube([1000, 100, 1000]);
+        }
+        hinge_front_arc(hinge_front_r);
+    }
+}
+module hinge_knuckle(i) {
+    sg = hinge_seg(i);
+    intersection() {
+        main_top_outer_solid();
+        hinge_cyl(hinge_r, sg[0] + hinge_gap/2, sg[1] - hinge_gap/2);
+    }
+}
+module hinge_clear(lid_side) {   // clearance around the OTHER part's knuckles
+    for (i = [0 : hinge_n - 1]) if (hinge_is_lid(i) != lid_side) {
+        sg = hinge_seg(i);
+        hinge_cyl(hinge_r + hinge_clr, sg[0] - hinge_gap/2, sg[1] + hinge_gap/2);
+    }
+}
+module hinge_pin_hole() { hinge_cyl(hinge_pin_d/2, hinge_x0 - 5, hinge_x1 + 5); }
+// Opening, the lid first moves FORWARD (its lower rear edge is ~70mm below the axis) and only then up, so anything of
+// the lid tucked in behind a cartridge guide wall (which rises from the bottom into the lid) would drive into it -- the
+// rear-right corner post's inner jaw did. Clear the lid out of each guide's path, sweeping hinge_swing_back behind it
+// (0.3mm into the side wall's inner face, so the two don't rub).
+hinge_swing_back = 15;
+hinge_swing_clr  = 0.7;
+module main_cart_guide_swing_clear() {
+    c = hinge_swing_clr;
+    for (side = [-1, 1])
+        intersection() {
+            hull() for (dy = [0, -hinge_swing_back])
+                translate([0, dy, standoff_height - c]) linear_extrude(height = cart_guide_h + 2*c) offset(delta = c) cart_guide_2d(side);
+            translate([-(case_margin - wall) - 0.3, -500, -500]) cube([1000, 1000, 1000]);
+        }
+}
+
+module main_lid() {
+    intersection() {
+    hinge_front_arc(hinge_front_r - hinge_split_gap);
+    difference() {
+        union() {
+            difference() {
+                main_case_top();
+                hinge_plate_zone(hinge_split_gap);
+                hinge_clear(true);
+                if (onepiece_hinged) main_lid_corner_post_clear();
+                main_cart_guide_swing_clear();
+            }
+            for (i = [0 : hinge_n - 1]) if (hinge_is_lid(i)) hinge_knuckle(i);
+        }
+        hinge_pin_hole();
+    }
+    }
+}
+// Plate gussets: the rear gussets (main_top_rear_gussets) re-homed onto the plate, flipped so the point is at the
+// BOTTOM (printed floor-down, the long sloped face is ~8 deg off vertical). The three short stubs by the DV I/O panel
+// stay short.
+module main_plate_gusset(gx, w, z_top) {
+    y_wall = hinge_split_y;
+    z_low = parting_h + 1;
+    translate([gx - w/2, 0, 0]) rotate([90, 0, 90]) linear_extrude(height = w)
+        polygon([[y_wall - 0.5, z_low], [y_wall + gusset_run, z_top], [y_wall - 0.5, z_top]]);
+}
+module main_plate_gussets() {
+    for (g = rear_gaps())
+        main_plate_gusset(g[0], g[1], main_top_rear_gusset_is_stub(g[0]) ? parting_h + 1 + gusset_stub_h
+                                                                           : hinge_az - hinge_r - hinge_clr - 1);
+}
+// Hinged one-piece: the decorative groove round the base's top edge (main_pcb_edge_lip_relief) is kept only along the
+// left and right sides, forward of the back plate's corner returns -- across the back, under the plate and returns, it
+// was a support-hungry, weak notch, so there it stays solid.
+module onepiece_hinged_groove_zone() {
+    y0 = hinge_return_y + hinge_split_gap;
+    translate([-500, y0, -500]) cube([500 - (case_margin - wall), 1000, 1000]);
+    translate([board_w + case_margin - wall, y0, -500]) cube([1000, 1000, 1000]);
+}
+// Hinged one-piece: each rear PCB rib's wall step (rib_wall_bump_run deep, just above the board) carried on up the back
+// plate as a fin, as high as the plate gussets go.
+module main_plate_rib_fins() {
+    iy = -(rear_margin - wall);
+    for (x = rear_rib_positions)
+        translate([x - rear_rib_w/2, iy - 0.5, standoff_height])
+            cube([rear_rib_w, rib_wall_bump_run + 0.5, hinge_az - hinge_r - hinge_clr - 1 - standoff_height]);
+}
+// Hinged one-piece: a solid post up each back corner, the lid screw bosses' diameter, floor to just under the hinge.
+// Trimmed flat at the rear cartridge guide's inner face so the one on that side doesn't reach into the slot.
+module main_plate_corner_posts() {
+    r = top_boss_d/2;  iy = -(rear_margin - wall);
+    for (x = [-(case_margin - wall) + r, board_w + case_margin - wall - r])
+        intersection() {
+            translate([x, iy + r, 1]) cylinder(r = r, h = hinge_az - hinge_r - hinge_clr - 1 - 1);
+            translate([-500, -500, 0]) cube([1000, 500 + hinge_return_y - 0.3, 200]);
+        }
+}
+// ... and the lid clears the space around them: the only lid material there was a useless full-height sliver left over
+// from the top shell's inside corner rounding. Stops just above the posts, below the hinge barrel.
+module main_lid_corner_post_clear() {
+    r = top_boss_d/2;  iy = -(rear_margin - wall);  zt = hinge_az - hinge_r - hinge_clr - 1 + 0.5;
+    for (x0 = [-case_margin - 1, board_w + case_margin - wall - 2*r - 0.5])
+        translate([x0, -500, -1]) cube([(case_margin - wall) + 2*r + 1.5, 500 + hinge_return_y + hinge_split_gap, zt + 1]);
+}
+module main_back_plate() {
+    zp = hinge_split_y + hinge_az - hinge_ay - hinge_r*sqrt(2) - 0.5;   // 45-degree tangent from the plate face to the barrel
+    difference() {
+        union() {
+            intersection() {
+                main_case_top();
+                hinge_plate_zone();
+            }
+            main_dvio_bosses(tip = -1);
+            main_plate_gussets();
+            if (onepiece_hinged) { main_plate_rib_fins(); main_plate_corner_posts(); }
+            for (i = [0 : hinge_n - 1]) if (!hinge_is_lid(i)) {
+                sg = hinge_seg(i);
+                hinge_knuckle(i);
+                intersection() {   // chin under the knuckle, inside the case's outline
+                    hull() {
+                        hinge_cyl(hinge_r, sg[0] + hinge_gap/2, sg[1] - hinge_gap/2);
+                        translate([sg[0] + hinge_gap/2, hinge_split_y - 0.5, zp - 0.01]) cube([sg[1] - sg[0] - hinge_gap, 0.5, 0.01]);
+                    }
+                    main_top_outer_solid();
+                }
+            }
+        }
+        hinge_clear(false);
+        hinge_return_sweep_clear();
+        main_dvio_cutouts();
+        main_dvio_boss_holes();
+        hinge_pin_hole();
+    }
+}
+module main_top_part()    { if (main_hinged) main_lid(); else main_case_top(); }
+module main_bottom_part() { if (main_hinged) union() { main_case_bottom(); main_back_plate(); main_front_band(); } else main_case_bottom(); }
 echo(str("Seam lugs: top mid lug bottom ", main_seam_lugs_top[1][2], " vs drive top ", main_seam_drive_top,
          "; bottom mid lug ", main_seam_lugs_bottom[1][0], "..", main_seam_lugs_bottom[1][1],
          " (vents end ", board_d*0.35 + vent_slot_len/2, ", board B from ", main_kbpcb_origin[1], ")"));
@@ -4480,13 +4818,163 @@ module one_piece_plinth() {
 module bottom_one_piece() {
     assert(one_piece_bottom, "part \"bottom_one_piece\" needs one_piece_bottom = true (it sets kb_feet so the undersides line up)");
     union() {
-        main_case_bottom();
+        main_bottom_part();
         kb_place() kb_case_bottom(joiners = false);
         one_piece_seam_fill();
         one_piece_front_corners();
         one_piece_plinth();
     }
 }
+
+// ============================================================================
+// FUJINET DRIVE TRAY (part "fujinet_tray")
+// ============================================================================
+// A 3.5"-drive-sized open frame for the CoCo FujiNet board (CoCo-FujiNet-Rev000.stl, 86 x 55.4, 4 x 3.2 holes) plus a
+// 0.91" 128x32 SSD1306 OLED, for one of the floppy bays: front panel, open bottom frame, left/right sides, a rear
+// ridge. Screws into the bay rails like a drive (upper hole row). Tray frame: x across (0 = left seen from the front),
+// y = depth from the front face, z up from the tray's bottom (printed as it sits, bottom down).
+// The board's front edge (buttons, microSD, LEDs) faces out: its button plungers stand fuji_btn_proud past the front
+// face, the LEDs behind them show through small windows above the buttons, and the microSD slot has its own opening.
+// OLED on the left, board on the right (fuji_oled_left; per the user, operated right-handed, so the hand doesn't cover
+// the display). false puts them the other way round.
+fuji_pcb_bx = [0, 85.98];  fuji_pcb_by = [-0.92, 54.45];  fuji_pcb_t = 1.51;   // from the STL
+fuji_holes  = [[18.44, 2.70], [70.12, 2.70], [18.44, 50.83], [70.12, 50.83]];  // board frame, 3.2mm
+fuji_btn_tip = 88.92;                         // plunger tips (board X)
+fuji_btns   = [[3.82, 6.96], [46.59, 49.73]]; // plunger Y spans; Z 3.52..6.67 above the PCB's underside
+fuji_btn_z  = [3.52, 6.67];
+fuji_led_z1 = 9.89;                           // LED tops (they stand ~9mm behind the plungers, same Y)
+fuji_sd_y   = [19.66, 34.36];  fuji_sd_z = [1.65, 3.50];   // microSD socket mouth
+tray_w = floppy_w;  tray_h = floppy_h;
+tray_panel_t = 2.5;
+tray_wall_t  = 2.4;
+tray_side_h  = 16;
+tray_floor_t = 2;
+fuji_btn_proud = 0.14;
+fuji_zp = 5.0;                                // PCB underside above the tray bottom: its solder tails (2.4) clear the 2mm floor, and
+                                              // the front-left board screw's head tops out ~0.9 under the side screw boss above it
+fuji_oled_left = true;
+fuji_x0 = fuji_oled_left                      // tray x of the board's by = fuji_pcb_by[0] edge
+    ? tray_w - tray_wall_t - 0.5 - (fuji_pcb_by[1] - fuji_pcb_by[0])   // board against the right wall
+    : tray_wall_t + 0.5;                                                 // ... or the left
+fuji_y0 = fuji_btn_tip - fuji_pcb_bx[1] - fuji_btn_proud;   // tray y of the board's front edge (bx = 85.98)
+fuji_ye = fuji_y0 + (fuji_pcb_bx[1] - fuji_pcb_bx[0]);      // ... and of its back edge
+tray_d  = fuji_ye + 2.7;                      // rear ridge just behind the board
+function fuji_pt(bx, by) = [fuji_x0 + (by - fuji_pcb_by[0]), fuji_y0 + (fuji_pcb_bx[1] - bx)];
+module fuji_place() {   // board STL -> tray frame (a rotation, no mirror)
+    multmatrix([[0, 1, 0, fuji_x0 - fuji_pcb_by[0]], [-1, 0, 0, fuji_y0 + fuji_pcb_bx[1]], [0, 0, 1, fuji_zp], [0, 0, 0, 1]]) children();
+}
+// Bay mounting: the bays' side rails take screws at floppy_screw_front_offsets back from the front face, at the UPPER
+// row (floppy_screw_z_offsets[1]; the lower row's bosses ran into the board's own front-left standoff) -- M3 x 8
+// through the 3mm rail into a 5mm-deep pilot.
+tray_boss_d = 6.4;  tray_boss_depth = 5;      // pilot depth from the side's outer face; the boss makes up the rest
+tray_screw_z = floppy_screw_z_offsets[1];
+// Floor: a 2mm plate with voronoi cut-outs (fixed seeds, so the pattern is stable between renders), solid around the
+// rim, under the walls / front panel / rear ridge, and around each board standoff.
+tray_vor_rib  = 2.4;                           // rib width between cells
+tray_vor_rim  = 5;                             // solid border
+tray_vor_nx = 5;  tray_vor_ny = 6;  tray_vor_seed = 7;
+function tray_vor_pts() = let (
+        x0 = tray_vor_rim, x1 = tray_w - tray_vor_rim, y0 = 9, y1 = tray_d - 4,
+        r = rands(-0.35, 0.35, 2*tray_vor_nx*tray_vor_ny, tray_vor_seed))
+    [ for (i = [0 : tray_vor_nx - 1], j = [0 : tray_vor_ny - 1])
+        let (k = 2*(i*tray_vor_ny + j), cx = (x1 - x0)/tray_vor_nx, cy = (y1 - y0)/tray_vor_ny)
+        [x0 + cx*(i + 0.5 + r[k]), y0 + cy*(j + 0.5 + r[k + 1])] ];
+module tray_vor_halfplane(a, b) {   // points closer to a than to b
+    m = (a + b)/2;  d = b - a;
+    translate(m) rotate(atan2(d[1], d[0])) translate([-400, -200]) square([400, 400]);
+}
+module tray_vor_cells() {
+    pts = tray_vor_pts();
+    for (i = [0 : len(pts) - 1])
+        offset(r = 1) offset(delta = -tray_vor_rib/2 - 1)
+            intersection_for (j = [for (k = [0 : len(pts) - 1]) if (k != i) k]) tray_vor_halfplane(pts[i], pts[j]);
+}
+module tray_floor_2d() {
+    difference() {
+        square([tray_w, tray_d]);
+        difference() {
+            intersection() {
+                tray_vor_cells();
+                translate([tray_vor_rim, tray_vor_rim]) square([tray_w - 2*tray_vor_rim, tray_d - 2*tray_vor_rim]);
+            }
+            square([tray_w, 9]);                                                   // under the front panel and OLED pocket
+            translate([0, tray_d - 4]) square([tray_w, 4]);                        // under the rear ridge
+            for (h = fuji_holes) translate(fuji_pt(h[0], h[1])) circle(r = 6);    // around the standoffs
+        }
+    }
+}
+// 0.96" 128x64 SSD1306 OLED, GoldenMorning GME12864-11 (user's spec sheet): PCB 27.5 wide x 27.8 tall x 1.2, 3.5 max
+// with the glass, 4-pin header along the top edge (4.27 down), viewing area 23.744 x 12.864 centred across the width
+// and 5.37 down from the top edge. It is TALLER than a drive (27.8 vs 25.4, and the bay opening is only 26.7), so it
+// stands up past the tray's top -- and therefore sits oled_glass_y back from the front face, behind the bay face's
+// 4mm bulkhead (floppy_bulkhead_t), with the front panel thickened out to meet the glass around the window. Header up
+// (the module's normal orientation), pins pointing back over the pocket's low back wall.
+// Fitting: put the display in the tray first, then install the tray from INSIDE the case (top off / lid open): lower
+// it between the rails and slide it forward into the opening -- with the display in, it no longer passes through the
+// opening from the front.
+oled_pcb = [27.5, 27.8];  oled_t = 3.5;          // width, height; max thickness with the glass
+oled_va = [23.744, 12.864];  oled_va_top = 5.37; // viewing area, and its top edge below the module's top edge
+oled_header_dn = 4.27;                           // header row below the top edge
+oled_clr = 0.3;
+oled_glass_y = floppy_bulkhead_t + 0.3;          // glass face back from the tray's front face
+oled_z0 = 1.0;                                   // module bottom above the tray bottom (the floor is recessed under it)
+oled_x0 = (fuji_oled_left                     // centred in the space beside the board
+    ? (tray_wall_t + fuji_pt(0, fuji_pcb_by[0])[0]) / 2
+    : (fuji_pt(0, fuji_pcb_by[1])[0] + (tray_w - tray_wall_t)) / 2) - oled_pcb[0]/2;
+oled_win_m = 0.5;                                // window margin around the viewing area
+function oled_va_z() = oled_z0 + oled_pcb[1] - oled_va_top - oled_va[1];   // viewing area's bottom edge (tray z)
+module fujinet_tray() {
+    ox0 = oled_x0 - oled_clr;  ox1 = oled_x0 + oled_pcb[0] + oled_clr;
+    oy1 = oled_glass_y + oled_t + oled_clr;           // back face of the pocket
+    wz1 = oled_z0 + oled_pcb[1] - oled_header_dn - 2.5;   // back wall top: under the header's plastic
+    screw_ys = [for (o = floppy_screw_front_offsets) o];
+    difference() {
+        union() {
+            cube([tray_w, tray_panel_t, tray_h]);                                            // front panel
+            for (x = [0, tray_w - tray_wall_t]) translate([x, 0, 0]) cube([tray_wall_t, tray_d, tray_side_h]);   // sides
+            linear_extrude(tray_floor_t) tray_floor_2d();                                     // voronoi floor
+            translate([0, tray_d - 2, 0]) cube([tray_w, 2, 8]);                                // rear ridge
+            for (h = fuji_holes) { p = fuji_pt(h[0], h[1]); translate([p[0], p[1], 0]) cylinder(d = 6.5, h = fuji_zp); }
+            for (x = [0, tray_w], y = screw_ys)                                               // side screw bosses
+                translate([x, y, tray_screw_z]) rotate([0, 90, 0])
+                    translate([0, 0, x == 0 ? 0 : -tray_boss_depth - 1]) cylinder(d = tray_boss_d, h = tray_boss_depth + 1);
+            // OLED pocket: the front panel thickened back to the glass, side walls, a low back wall, a floor under it
+            translate([ox0 - 1.2, tray_panel_t - 0.01, 0]) cube([ox1 - ox0 + 2.4, oled_glass_y - tray_panel_t + 0.01, tray_h]);
+            for (x = [ox0 - 1.2, ox1]) translate([x, tray_panel_t, 0]) cube([1.2, oy1 + 1.4 - tray_panel_t, tray_h]);
+            translate([ox0 - 1.2, oy1, 0]) cube([ox1 - ox0 + 2.4, 1.4, wz1]);
+            translate([ox0 - 1.2, tray_panel_t, 0]) cube([ox1 - ox0 + 2.4, oy1 + 1.4 - tray_panel_t, tray_floor_t]);
+        }
+        // front openings: button plungers, LED windows above them, microSD
+        for (b = fuji_btns) {
+            x0 = fuji_x0 + b[0] - fuji_pcb_by[0];  x1 = fuji_x0 + b[1] - fuji_pcb_by[0];
+            translate([x0 - 0.3, -1, fuji_zp + fuji_btn_z[0] - 0.3]) cube([x1 - x0 + 0.6, tray_panel_t + 2, fuji_btn_z[1] - fuji_btn_z[0] + 0.6]);
+            translate([x0 - 0.3, -1, fuji_zp + fuji_btn_z[1] + 1.1]) cube([x1 - x0 + 0.6, tray_panel_t + 2, fuji_led_z1 + 0.6 - fuji_btn_z[1] - 1.1]);
+        }
+        translate([fuji_x0 + fuji_sd_y[0] - fuji_pcb_by[0] - 0.4, -1, fuji_zp + fuji_sd_z[0] - 0.5])
+            cube([fuji_sd_y[1] - fuji_sd_y[0] + 0.8, tray_panel_t + 2, fuji_sd_z[1] - fuji_sd_z[0] + 1.0]);
+        // OLED: window (flared 45 degrees toward the outside, so the deep panel doesn't shade the edges), and the pocket
+        hull() {
+            translate([oled_x0 + (oled_pcb[0] - oled_va[0])/2 - oled_win_m, oled_glass_y - 0.01, oled_va_z() - oled_win_m])
+                cube([oled_va[0] + 2*oled_win_m, 0.02, oled_va[1] + 2*oled_win_m]);
+            f = min(1.5, tray_h - 0.8 - (oled_va_z() + oled_va[1] + oled_win_m));   // flare, kept inside the panel's height
+            translate([oled_x0 + (oled_pcb[0] - oled_va[0])/2 - oled_win_m - f, -1, oled_va_z() - oled_win_m - f])
+                cube([oled_va[0] + 2*oled_win_m + 2*f, 1.01, oled_va[1] + 2*oled_win_m + 2*f]);
+        }
+        translate([ox0, oled_glass_y, oled_z0 - oled_clr]) cube([ox1 - ox0, oy1 - oled_glass_y, tray_h + 10]);
+        // pilots
+        for (h = fuji_holes) { p = fuji_pt(h[0], h[1]); translate([p[0], p[1], tray_floor_t]) cylinder(d = m3_pilot_d, h = fuji_zp); }
+        for (x = [0, tray_w], y = screw_ys)
+            translate([x, y, tray_screw_z]) rotate([0, 90, 0])
+                translate([0, 0, x == 0 ? -1 : -tray_boss_depth]) cylinder(d = m3_pilot_d, h = tray_boss_depth + 1);
+    }
+}
+// board outline must not run into the side wall or the OLED pocket
+assert(fuji_oled_left ? fuji_pt(0, fuji_pcb_by[0])[0] > oled_x0 + oled_pcb[0] + oled_clr + 1.2
+                      : fuji_pt(0, fuji_pcb_by[1])[0] < oled_x0 - oled_clr - 1.2, "FujiNet board overlaps the OLED pocket");
+assert(oled_x0 - oled_clr - 1.2 > tray_wall_t - 0.01 && oled_x0 + oled_pcb[0] + oled_clr + 1.2 < tray_w - tray_wall_t + 0.01,
+       "OLED pocket runs into a side wall");
+assert(oled_va_z() + oled_va[1] + oled_win_m < tray_h - 0.8, "OLED viewing area runs off the top of the front panel");
+assert(tray_d <= floppy_d, "tray deeper than the bay's drive depth");
 
 // ============================================================================
 // PART SELECTOR
@@ -4511,9 +4999,11 @@ module bottom_one_piece() {
 //   "bezel_oem_whole/_left/_right"      -- bezel over the stock keyboard (print orientation: top face down)
 //   "bezel_artemis_whole/_left/_right"  -- Artemis STL + filler/skin, one piece (same orientation)
 //   "bezel_fit_oem" / "bezel_fit_artemis" -- the bezel sitting in the keyboard shell, for looking at
+//   "usbc_clip"            -- clip plate for the 16.2 x 10.6 USB-C power board, screws onto the rear-left bosses
+//   "fujinet_tray"         -- 3.5"-bay tray for the CoCo FujiNet board + a 0.91" OLED ("fujinet_tray_fit" shows the board in it)
 //   "bottom_one_piece"     -- main bottom + keyboard shell as one part (needs one_piece_bottom = true; ~334 x 341)
 //                             -> print main_top_* with one_piece_bottom = true as well (its skirt is 5mm taller)
-part = "main_bottom_whole";
+part = "fujinet_tray";
 
 // exploded gap between the bottom tray and top shell in "preview" only, so
 // the parting line and connector notches are visible; they sit flush (no
@@ -4563,10 +5053,10 @@ module orientation_labels() {
 }
 
 if (part == "preview") {
-    color("SlateGray") main_case_bottom();
+    color("SlateGray") main_bottom_part();
     color("LightSteelBlue")
         translate([0, 0, preview_explode_z])
-            main_case_top();
+            main_top_part();
     color("Orange")
         translate([0, 0, preview_explode_z])
             main_pizero_hdmi_mount(); // reference only -- see main_case_top()'s own comment
@@ -4579,13 +5069,13 @@ if (part == "preview") {
 } else if (part == "main_bottom_right") {
     main_case_bottom_right();
 } else if (part == "main_bottom_whole") {
-    main_case_bottom();
+    main_bottom_part();
 } else if (part == "main_top_left") {
     main_case_top_left();
 } else if (part == "main_top_right") {
     main_case_top_right();
 } else if (part == "main_top_whole") {
-    main_case_top();
+    main_top_part();
 } else if (part == "keyboard_bottom_left") {
     kb_case_bottom_left();
 } else if (part == "keyboard_bottom_right") {
@@ -4616,6 +5106,14 @@ if (part == "preview") {
     kb_bz_print() kb_bz_half(false) kb_bezel_artemis();
 } else if (part == "bezel_artemis_right") {
     kb_bz_print() kb_bz_half(true) kb_bezel_artemis();
+} else if (part == "fujinet_tray") {
+    fujinet_tray();
+} else if (part == "fujinet_tray_fit") {   // tray + the board and the OLED (as a box) in place, for looking at
+    color("SteelBlue") fujinet_tray();
+    color("Green") fuji_place() import("CoCo-FujiNet-Rev000.stl");
+    color("Black") translate([oled_x0, oled_glass_y, oled_z0]) cube([oled_pcb[0], oled_t, oled_pcb[1]]);
+} else if (part == "usbc_clip") {
+    translate([0, 0, -usbc_trigger_boss_h]) usbc_clip();   // plate on the bed
 } else if (part == "bottom_one_piece") {
     bottom_one_piece();
 } else if (part == "bezel_fit_oem" || part == "bezel_fit_artemis") {   // bezel in place in the keyboard shell, for looking at
