@@ -53,50 +53,42 @@ flange_w = opening_w + 2*flange_margin;   // 110.6
 flange_h = opening_h + 2*flange_margin;   // 34.4
 
 groove_r     = 1.0;      // shallower than the main case's 1.5mm -- there's less material to spare here
-groove_pitch = 5;
+groove_n     = 4;        // a fixed count, centred on the panel (per direction -- the fixed-pitch loop lost one
+                          // when the opening shrank and the panel got shorter)
+groove_pitch = 5;        // at most; tightened if the panel can't fit groove_n at this pitch
 groove_edge_clear = 3;   // keep grooves this far from the panel's own top/bottom edge
 
 // --- spring clips ---
-// Mechanism: each clip is a lofted blade that stands ON EDGE in a blind
-// pocket in the plate's back (foot anchored, glue if needed). One face of
-// the blade (local Z=0, matched to the pocket's own reference face) stays
-// flat along the whole length; the OTHER face (Z growing) carries the
-// profile: base thickness through the foot, a thin waist that does the
-// actual flexing (like a real cantilever snap-fit, not a stiff taper),
-// then a ramp up to a barb peak, then a sharp drop to an undercut catch
-// face. The pocket itself is angled outward so, once past the peak, the
-// blade sits inside the bay opening with the barb's relaxed reach past
-// the opening's edge -- inserting compresses the waist as the barb rides
-// over the edge, and it springs back so the catch face sits behind the
-// bulkhead, resisting pull-out the way a real drive-bay clip does (not
-// just relying on continuous friction from a smooth taper, which is what
-// the first draft here did and which read as "no spring, no barb").
-// FIRST PASS -- lengths/thicknesses below are a reasonable starting
-// guess, not a solved spring rate; retune after a fit test.
-clip_base_t   = 0.9;     // nominal blade thickness through the foot -- thin enough to flex,
-                          // but sized to snugly fill the pocket (pocket_w below), not rattle
-                          // around in it. Bumped from 0.7 after a fit test came back loose.
-clip_hinge_t  = 0.35;    // thickness at the flex waist -- concentrates the bend there
-clip_barb_t   = 1.7;     // barb peak thickness (extra reach that has to compress going in)
-clip_catch_t  = 0.4;     // thickness right after the barb -- undercut, gives the catch a real ledge
-clip_blade_w  = 3.4;     // blade width at the base -- the plate's local Y (vertical) once installed
-clip_tip_w    = 1.8;     // blade width at the tip
-clip_arm_w    = clip_blade_w * 0.8;   // width through the waist/barb/catch region
+// Mechanism (2026-09-30 rework, per a print fit): each clip is a lofted blade standing ON EDGE in a blind pocket in
+// the plate's back (foot anchored, glue if needed), one per side, centred vertically in a 20mm-tall slot. One face of
+// the blade (local Z=0, matched to the pocket's own reference face) stays flat; the other carries the profile: base
+// thickness through the foot, a thin waist that does the flexing, then a ROUNDED BUMP. The pocket leans outward so the
+// relaxed bump reaches clip_bump_preload past the opening's side edge; installed, the bump presses on the bulkhead's
+// opening side and the drive rail right behind it (the rails are flush with the opening's side edges, so there is no
+// ledge behind the bulkhead to hook -- the old barb-and-catch clip ran into the rail). Holds by spring pressure; both
+// sides of the bump are gentle ramps, so it pushes in and pulls out. The rest of the blade stays clear of the wall.
+// Also fixed: the slots used to sit at a fixed X = 52 from when the opening was 104.6 wide -- outside today's 101.9
+// opening. The position is derived from opening_w now.
+clip_base_t   = 1.1;     // blade thickness through the foot (was 0.9)
+clip_hinge_t  = 0.45;    // thickness at the flex waist -- concentrates the bend there (was 0.35)
+clip_bump_t   = 1.8;     // bump crest thickness
+clip_tip_t    = 0.6;     // thickness at the tip (lead-in)
+clip_slot_h   = 20;      // the slot in the plate's back, along the plate's vertical
+clip_blade_w  = clip_slot_h - 0.3;    // blade width at the base -- the plate's local Y (vertical) once installed
+clip_tip_w    = clip_blade_w - 4;     // blade width at the tip (lead-in)
+clip_arm_w    = clip_blade_w - 1;     // width through the waist/bump region
 clip_foot_len = 2.0;     // portion anchored in the plate's blind pocket
 clip_arm_len  = 8.0;     // portion projecting free past the back face, into the bay opening
 clip_total_len = clip_foot_len + clip_arm_len;
-clip_splay_deg = 18;     // pocket lean, outward from straight-in -- at this angle the barb
-                          // peak (positioned to clear the 4mm bulkhead with margin) lands
-                          // about 1.5mm past the opening's own edge at rest
-clip_x_offset  = 52;     // pocket center -- must sit in the solid border (panel edge is at
-                          // flange_w/2 - inset_margin = 49.3, only 2.5mm of material remains
-                          // under the panel itself; the pocket needs the full-thickness
-                          // border, up to the flange's own outer edge at 55.3)
-clip_y_offset  = 9;      // 4 clips total (2 per side, split top/bottom) instead of 2 -- a
-                          // single clip per side lets the plate rock/twist about the
-                          // diagonal; four spread across all quadrants holds it flat and
-                          // square. Stays clear of the corner rounding (corner_r=4 starts
-                          // past X=51.3/Y=13.2, this sits inside that).
+clip_face_clr  = 0.3;    // blade's outer face this far inside the opening's edge at the bay face
+clip_bump_preload = 0.8; // bump crest this far past the opening's edge at rest = how much it presses when installed
+clip_pocket_d  = clip_foot_len + 0.5;   // blind pocket depth into the plate's back
+clip_bump_pos  = [clip_foot_len + 5.0, clip_foot_len + 5.6];   // bump crest (start, end) along the clip, from the foot's deep end
+clip_bump_depth = (clip_bump_pos[0] + clip_bump_pos[1])/2 - clip_pocket_d;   // crest's distance behind the plate's back face
+clip_x_offset  = opening_w/2 - clip_face_clr - clip_base_t;   // pocket's reference (inner) face, at the back face
+// Lean outward so the crest lands clip_bump_preload past the edge: offset + depth*tan(splay) + bump_t = edge + preload.
+clip_splay_deg = atan((clip_face_clr + clip_base_t + clip_bump_preload - clip_bump_t) / clip_bump_depth);
+clip_y_offset  = 0;      // centred vertically
 
 module rounded_rect_2d(w, h, r) {
     offset(r = r) offset(delta = -r) square([w, h], center = true);
@@ -109,11 +101,11 @@ module floppy_filler_clip_pocket() {
     // Matches the clip's own foot cross-section (local Z 0..clip_base_t,
     // Y -clip_blade_w/2..clip_blade_w/2) with a little clearance -- not
     // centered in X, so the pocket's local X=0 face lines up with the
-    // blade's flat (non-barb) reference face. Clearance tightened from
+    // blade's flat (non-bump) reference face. Clearance tightened from
     // 0.3 to 0.15 after the wider gap printed loose.
     pocket_w = clip_base_t + 0.15;
-    pocket_h = clip_blade_w + 0.3;
-    pocket_d = clip_foot_len + 0.5;
+    pocket_h = clip_slot_h;
+    pocket_d = clip_pocket_d;
     rotate([0, -clip_splay_deg, 0])
         translate([-0.15, -pocket_h/2, 0])
             cube([pocket_w, pocket_h, pocket_d]);
@@ -121,7 +113,7 @@ module floppy_filler_clip_pocket() {
 
 module floppy_filler_clip_pockets() {
     for (side = [-1, 1])
-        for (yo = [-clip_y_offset, clip_y_offset])
+        for (yo = [clip_y_offset])                 // one per side now
             translate([side*clip_x_offset, yo, 0])
                 mirror([side < 0 ? 1 : 0, 0, 0])
                     floppy_filler_clip_pocket();
@@ -142,7 +134,9 @@ module floppy_filler_plate() {
         // half-round louver grooves within the panel -- cylinder axis sits
         // exactly on the recessed panel's own surface, so only the inward
         // half is ever removed
-        for (gy = [-(panel_h/2 - groove_edge_clear) : groove_pitch : panel_h/2 - groove_edge_clear])
+        let (pitch = min(groove_pitch, (panel_h - 2*groove_edge_clear) / (groove_n - 1)))
+        for (i = [0 : groove_n - 1])
+            let (gy = (i - (groove_n - 1)/2) * pitch)
             translate([0, gy, flange_t - inset_depth])
                 rotate([0, 90, 0])
                     cylinder(r = groove_r, h = panel_w + 0.2, center = true);
@@ -156,26 +150,26 @@ module clip_xsec(len_pos, w, t) {
     // A thin cross-section slice at a given length position, for lofting.
     // Z always starts at 0 -- that face is the blade's flat reference
     // side (matches the pocket's own local X=0 face); only the Z=t face
-    // (the barb side) varies.
+    // (the bump side) varies.
     translate([len_pos - 0.0005, -w/2, 0])
         cube([0.001, max(w, 0.01), max(t, 0.05)]);
 }
 
 module floppy_filler_clip() {
     // Flat-printing (lies on the bed, no supports) lofted spring blade.
-    // Foot -> flex waist -> barb ramp -> catch undercut -> short tip,
+    // Foot -> flex waist -> rounded bump -> lead-in tip,
     // see the header comment above for the mechanism. Installed standing
     // on edge in the plate's back pocket (floppy_filler_clip_pocket).
     f = clip_foot_len;
     pts = [
         [0,                clip_blade_w, clip_base_t],   // foot, deep end (in the pocket)
         [f,                clip_blade_w, clip_base_t],   // foot end / pocket mouth
-        [f + 2.2,          clip_arm_w,   clip_base_t],   // narrows into the arm
-        [f + 2.8,          clip_arm_w,   clip_hinge_t],  // flex hinge -- thin, does the bending
-        [f + 3.3,          clip_arm_w,   clip_base_t],   // back to base thickness after the hinge
-        [f + 6.0,          clip_arm_w,   clip_barb_t],   // ramp up to the barb peak
-        [f + 6.6,          clip_arm_w,   clip_catch_t],  // sharp drop -- the catch face (undercut)
-        [clip_total_len,   clip_tip_w,   clip_catch_t],  // short lead-in tip past the catch
+        [f + 1.6,          clip_arm_w,   clip_base_t],   // narrows into the arm
+        [f + 2.2,          clip_arm_w,   clip_hinge_t],  // flex hinge -- thin, does the bending
+        [f + 2.7,          clip_arm_w,   clip_base_t],   // back to base thickness after the hinge
+        [clip_bump_pos[0], clip_arm_w,   clip_bump_t],   // gentle ramp up to the bump (the pull-out side)
+        [clip_bump_pos[1], clip_arm_w,   clip_bump_t],   // crest
+        [clip_total_len,   clip_tip_w,   clip_tip_t],    // gentle ramp down to the tip (the push-in side)
     ];
     for (i = [0 : len(pts) - 2])
         hull() {
@@ -184,8 +178,20 @@ module floppy_filler_clip() {
         }
 }
 
+// A clip seated in its pocket, in the plate's frame: the clip's length runs from the pocket bottom out of the back face
+// (plate -z), its thickness along the pocket's local +x (the bump side, facing outward), its width along y.
+module floppy_filler_clips_seated() {
+    for (side = [-1, 1])
+        translate([side*clip_x_offset, clip_y_offset, 0])
+            mirror([side < 0 ? 1 : 0, 0, 0])
+                rotate([0, -clip_splay_deg, 0])
+                    multmatrix([[0, 0, 1, 0], [0, 1, 0, 0], [-1, 0, 0, clip_pocket_d], [0, 0, 0, 1]])
+                        floppy_filler_clip();
+}
+
 // ============================================================================
 // part selection -- "plate" | "clip" | "both" (both, laid out for one plate)
+//                   | "assembly" (plate with both clips seated, for looking at / fit checks)
 // ============================================================================
 part = "plate";
 
@@ -193,9 +199,13 @@ if (part == "plate")
     floppy_filler_plate();
 else if (part == "clip")
     floppy_filler_clip();
+else if (part == "assembly") {
+    color("Orange") floppy_filler_plate();
+    color("SteelBlue") floppy_filler_clips_seated();
+}
 else if (part == "both") {
     floppy_filler_plate();
-    for (i = [0, 1, 2, 3])
-        translate([-clip_total_len/2 - 14 + i*10, flange_h/2 + 8, 0])
+    for (i = [0, 1])
+        translate([-clip_total_len - 4 + i*(clip_total_len + 8), flange_h/2 + 4 + clip_blade_w/2, 0])
             floppy_filler_clip();
 }
