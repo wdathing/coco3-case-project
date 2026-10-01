@@ -1476,8 +1476,8 @@ module main_connector_cutouts_top() {
 // The main bottom's own window in the front wall, full height (see main_fp_z1 above) -- no snap groove (the taller plate is
 // held by 2 screws instead, see main_faceplate_screw_*() below).
 module main_faceplate_window() {
-    translate([board_w/2 - fp_len/2, main_front_y - wall - 0.01, fp_z0])   // starts at the wall's inner face so it leaves the stop lips alone
-        cube([fp_len, wall + 1.01, main_fp_z1 - fp_z0 + 0.1]);   // +0.1: overshoots the parting line a hair so the cut doesn't
+    translate([main_fp_win_x0, main_front_y - wall - 0.01, fp_z0])   // starts at the wall's inner face so it leaves the stop lips alone
+        cube([main_fp_win_x1 - main_fp_win_x0, wall + 1.01, main_fp_z1 - fp_z0 + 0.1]);   // +0.1: overshoots the parting line a hair so the cut doesn't
                                                                   // end exactly flush with the shell's own top face -- that
                                                                   // coincident boundary was rendering as a leftover sliver
 }
@@ -1500,9 +1500,16 @@ module main_faceplate_stops() {
 // solid material the whole time.
 // X positions and extent picked to clear board B's own mounting bosses/wedges (main_kbpcb_mount(), at roughly x=83.9
 // and x=164.2, both reaching to within a few mm of the front wall) -- not centred or evenly spaced, just wherever's clear.
-main_fp_screw_xs  = [110, 195];
-main_fp_foot_x0   = 92;
-main_fp_foot_x1   = 206;
+// Hinged builds: the main plate no longer has to match the keyboard's (it's taller, with side tabs), so it and its window
+// are only as wide as its openings need (X 89..133, plus ~4 each side); foot and screws pulled in to suit, the foot's left
+// end clear of board B's boss at x~84 (it reaches the wall below the board). Not with keyboard_attached: the bridge plate
+// passes through the full-width window there.
+main_fp_narrow    = main_hinged && !keyboard_attached;
+main_fp_win_x0    = main_fp_narrow ? 84  : board_w/2 - fp_len/2;   // right channel then stays left of the split at x=140
+main_fp_win_x1    = main_fp_narrow ? 136 : board_w/2 + fp_len/2;
+main_fp_screw_xs  = main_fp_narrow ? [94, 120] : [110, 195];
+main_fp_foot_x0   = main_fp_narrow ? 89  : 92;
+main_fp_foot_x1   = main_fp_narrow ? 133.4 : 206;   // narrow: stops short of the right channel's back wall
 main_fp_foot_len  = 10;   // how far the foot reaches into the case, away from the wall -- short enough to stay clear of
                           // the x=164.2 boss's own reach (to within 3mm of the wall) even though the foot crosses its X
 main_fp_foot_t    = 2.5;  // foot thickness -- stops just clear of board B's underside (its PCB bottom sits at z=6)
@@ -1531,10 +1538,11 @@ module main_faceplate(placed = false) {
     translate(placed ? [0, 0, 0] : [0, 0, -new_floor_t])
     difference() {
         union() {
-            translate([board_w/2 - fp_len/2 + fp_clr, y0, fp_z0 + fp_clr])
-                cube([fp_len - 2*fp_clr, fp_t, main_fp_z1 - fp_clr - (fp_z0 + fp_clr)]);
+            translate([main_fp_win_x0 + fp_clr, y0, fp_z0 + fp_clr])
+                cube([main_fp_win_x1 - main_fp_win_x0 - 2*fp_clr, fp_t, main_fp_z1 - fp_clr - (fp_z0 + fp_clr)]);
             translate([main_fp_foot_x0, main_fp_foot_y0(), new_floor_t])
                 cube([main_fp_foot_x1 - main_fp_foot_x0, main_fp_foot_len, main_fp_foot_t]);
+            if (main_hinged) { main_faceplate_hinged_ext(); main_faceplate_tabs(); }   // up through the band gap; side tabs
         }
         translate(shift) kb_boardA_access();
         main_faceplate_foot_clearance();
@@ -1931,10 +1939,28 @@ module main_top_spine_ribs() {
     y0 = -rear_margin + wall + 0.3;
     y1 = main_front_y - wall - 0.3;
     spine_pad = 0.2;
-    segs = [[y0, main_break1_y], [main_break1_y - spine_pad, main_break2_y], [main_break2_y - spine_pad, y1]];
-    for (x = spine_rib_xs())
+    xs = spine_rib_xs();
+    for (x = xs) {
+        // The two OUTER ribs run straight only as far back as the rear drive bracket, then angle across toward the
+        // corners -- to the middle of the nearest lid knuckle. Hinged, they end on the hinge axis and fuse into the
+        // barrel (straight on, they just died into the clearance round the back plate's knuckle); otherwise they end at
+        // the rear wall's inner face at that same X (common code, so both tops look alike).
+        outer = x == xs[0] || x == xs[len(xs) - 1];
+        ys = outer ? spine_rib_turn_y() : y0;
+        segs = [[ys, main_break1_y], [main_break1_y - spine_pad, main_break2_y], [main_break2_y - spine_pad, y1]];
         for (seg = segs)
             if (seg[1] > seg[0]) main_top_spine_rib_seg(x, seg[0], seg[1]);
+        if (outer) main_top_spine_rib_angled(hinge_lid_knuckle_mid_x(x), main_hinged ? hinge_ay : y0 - 0.3, x, ys + 0.2);
+    }
+}
+// where the outer ribs turn: the rear drive bracket band's rear end (as main_floppy_bay_brackets() places it)
+function spine_rib_turn_y() = max(floppy_notch_y0 - max(floppy_screw_front_offsets) - 12.7, floppy_rail_y0);
+// the angled piece: same section as a straight rib, from (xa, ya) to (xb, yb), in the flat rear-roof zone
+module main_top_spine_rib_angled(xa, ya, xb, yb) {
+    hull() for (p = [[xa, ya], [xb, yb]]) {
+        h = min(spine_rib_h, top_roof_h_at(p[1]));
+        translate([p[0] - spine_rib_w/2, p[1], parting_h + top_roof_h_at(p[1]) - h]) cube([spine_rib_w, 0.01, h]);
+    }
 }
 
 // 45-degree FILLET where the drive-bay's floor slab meets the bulkhead's front face, so the top prints roof-down
@@ -2619,7 +2645,7 @@ module main_cart_guide_walls() {
 // cn3_bump: the whole CN3 access feature -- the floor opening, collar, shelf, hopper and raised pedestal (the "RGB bump").
 // Off: plain floor there; the corner screw boss (cn3_new_standoff_xy) stays, as a full-height post braced to the side
 // wall (X, running on into the support beam's end) and to the front wall (Y). Off by default in the one-piece build.
-cn3_bump = !one_piece_bottom;
+cn3_bump = !one_piece_bottom && !main_hinged;   // off for hinged builds too (2026-09-30: faster print)
 cn3_brace_w    = 3;
 cn3_brace_drop = 3;     // braces stop this far below the board's underside (clear of solder tails near the board edge)
 cn3_open       = 42;
@@ -3309,7 +3335,7 @@ module main_case_bottom() {
                     // the cut has nothing here yet to remove (this was the actual bug: the
                     // solid, added afterward, just plugged the floor's own hole from above)
                 if (kb_join_magnets) main_magnet_pads();
-                main_faceplate_stops();
+                if (main_hinged) main_faceplate_channels(); else main_faceplate_stops();
                 if (kb_join_keys) main_km_pads();
                 if (kb_join_magnets && lip_socket_tabs_enabled) main_lip_socket();
             }
@@ -3662,6 +3688,53 @@ module main_front_band() {   // base side
             translate([-500, main_front_y - 40, -500]) cube([1000, 100, 1000]);
         }
         hinge_front_arc(hinge_front_r);
+        main_front_band_fp_gap();
+    }
+}
+// Above the main faceplate's window both narrow bits are gone: the band's (it stopped the plate dropping in from
+// above) and the lid's thin skirt wedge over it (printed poorly, needed support). The hinged main_faceplate fills the
+// gap instead, flat-topped at the skirt line (front_deck_h), 0.3 under the lid, which now starts there (main_lid_fp_cut).
+module main_front_band_fp_gap() {
+    translate([main_fp_win_x0, main_front_y - wall - 1, parting_h - 0.01]) cube([main_fp_win_x1 - main_fp_win_x0, wall + 2, 100]);
+}
+module main_faceplate_hinged_ext() {
+    y0 = main_front_y - fp_out_gap - fp_t;
+    translate([main_fp_win_x0 + fp_clr, y0, main_fp_z1 - fp_clr - 1])   // 1mm into the plate below, so it fuses
+        cube([main_fp_win_x1 - main_fp_win_x0 - 2*fp_clr, fp_t, front_deck_h - (main_fp_z1 - fp_clr - 1)]);
+}
+module main_lid_fp_cut() {   // the lid's side of it -- reaching back past the skirt's inner corner fillet, which would
+                             // otherwise be left as a thin free-hanging ledge (and swings into the plate's top edge)
+    translate([main_fp_win_x0, main_front_y - wall - 4, parting_h - 1]) cube([main_fp_win_x1 - main_fp_win_x0, wall + 5, front_deck_h + hinge_split_gap - parting_h + 1]);
+}
+// Hinged build: the taller plate is braced at its sides by a channel on the inside of the wall at each window end
+// (instead of main_faceplate_stops): the plate has a tab each side reaching fp_tab_out past the window edge, just
+// behind the wall, captured between the wall's inner face and the channel's back wall. Floor to the parting line (above
+// it is the lid's space). The plate drops in from above, tabs sliding down the channels.
+fp_tab_t   = 1.8;    // tab thickness (Y)
+fp_tab_in  = 2;      // tab overlap onto the plate's back, inside the window
+fp_tab_out = 1.8;    // tab reach past the window edge (the base's interior structure is ~2.1 beyond the left edge)
+fp_ch_clr  = 0.15;   // tab clearance front and back
+fp_ch_end_clr = 0.3; // clearance at the tab's outer end
+fp_ch_wall = 1.6;    // channel back / end wall thickness
+function fp_tab_y1() = main_front_y - wall - fp_ch_clr;   // tab's front face, just behind the wall's inner face
+function fp_tab_y0() = fp_tab_y1() - fp_tab_t;
+module main_faceplate_tabs() {
+    for (s = [-1, 1]) {
+        xe = s < 0 ? main_fp_win_x0 : main_fp_win_x1;
+        translate([min(xe - s*fp_tab_in, xe + s*fp_tab_out), fp_tab_y0(), fp_z0 + fp_clr])
+            cube([fp_tab_in + fp_tab_out, fp_tab_t, main_fp_z1 - fp_clr - (fp_z0 + fp_clr)]);
+    }
+}
+module main_faceplate_channels() {
+    yb1 = fp_tab_y0() - fp_ch_clr;          // back wall's front face
+    yb0 = yb1 - fp_ch_wall;
+    yw  = main_front_y - wall + 0.01;        // fused into the wall's inner face
+    xo  = fp_tab_out + fp_ch_end_clr;        // end wall's inner face, past the window edge
+    for (s = [-1, 1]) {
+        xe = s < 0 ? main_fp_win_x0 : main_fp_win_x1;
+        // back wall behind the whole tab, and an end wall closing the channel's outer end
+        translate([min(xe - s*(fp_tab_in + 0.3), xe + s*xo), yb0, 0]) cube([fp_tab_in + 0.3 + xo, fp_ch_wall, parting_h]);
+        translate([min(xe + s*xo, xe + s*(xo + fp_ch_wall)), yb0, 0]) cube([fp_ch_wall, yw - yb0, parting_h]);
     }
 }
 module hinge_knuckle(i) {
@@ -3677,6 +3750,11 @@ module hinge_clear(lid_side) {   // clearance around the OTHER part's knuckles
         hinge_cyl(hinge_r + hinge_clr, sg[0] - hinge_gap/2, sg[1] + hinge_gap/2);
     }
 }
+// X of the middle of the lid knuckle nearest x
+function hinge_lid_knuckle_mid_x(x) = let (
+        ms = [for (i = [0 : hinge_n - 1]) if (hinge_is_lid(i)) (hinge_seg(i)[0] + hinge_seg(i)[1]) / 2],
+        d = [for (m = ms) abs(m - x)], dm = min(d))
+    [for (i = [0 : len(ms) - 1]) if (d[i] == dm) ms[i]][0];
 module hinge_pin_hole() { hinge_cyl(hinge_pin_d/2, hinge_x0 - 5, hinge_x1 + 5); }
 // Opening, the lid first moves FORWARD (its lower rear edge is ~70mm below the axis) and only then up, so anything of
 // the lid tucked in behind a cartridge guide wall (which rises from the bottom into the lid) would drive into it -- the
@@ -3703,7 +3781,8 @@ module main_lid() {
                 main_case_top();
                 hinge_plate_zone(hinge_split_gap);
                 hinge_clear(true);
-                if (onepiece_hinged) main_lid_corner_post_clear();
+                main_lid_corner_clear();
+                main_lid_fp_cut();
                 main_cart_guide_swing_clear();
             }
             for (i = [0 : hinge_n - 1]) if (hinge_is_lid(i)) hinge_knuckle(i);
@@ -3752,10 +3831,11 @@ module main_plate_corner_posts() {
             translate([-500, -500, 0]) cube([1000, 500 + hinge_return_y - 0.3, 200]);
         }
 }
-// ... and the lid clears the space around them: the only lid material there was a useless full-height sliver left over
-// from the top shell's inside corner rounding. Stops just above the posts, below the hinge barrel.
-module main_lid_corner_post_clear() {
-    r = top_boss_d/2;  iy = -(rear_margin - wall);  zt = hinge_az - hinge_r - hinge_clr - 1 + 0.5;
+// Every hinged lid clears its two back corners (and the one-piece's corner posts get the room): the only lid material
+// there was a useless full-height sliver, left over from the top shell's inside corner rounding once the back plate is
+// split off -- it hung off the back corners under the hinge. Up to the bottom of the hinge barrel.
+module main_lid_corner_clear() {
+    r = top_boss_d/2;  zt = hinge_az - hinge_r;
     for (x0 = [-case_margin - 1, board_w + case_margin - wall - 2*r - 0.5])
         translate([x0, -500, -1]) cube([(case_margin - wall) + 2*r + 1.5, 500 + hinge_return_y + hinge_split_gap, zt + 1]);
 }
@@ -4770,7 +4850,7 @@ module one_piece_seam_fill() {
             solid_from_footprint(case_margin, 0, h, rear_margin);   // clipped to the main case's plan (its rounded corners)
             translate([-500, main_front_y - wall, 0]) cube([1000, wall + 0.01, h]);
         }
-        translate([board_w/2 - fp_len/2, main_front_y - wall - 1, fp_z0]) cube([fp_len, wall + 2, h]);
+        translate([main_fp_win_x0, main_front_y - wall - 1, fp_z0]) cube([main_fp_win_x1 - main_fp_win_x0, wall + 2, h]);
     }
     translate([kb_x0 + kb_corner_r, main_front_y - 0.01, 0]) cube([kb_w - 2*kb_corner_r, 1, kb_base_t]);   // keyboard side: 1mm under its back floor edge
 }
@@ -4992,7 +5072,8 @@ assert(tray_d <= floppy_d, "tray deeper than the bay's drive depth");
 //   "keyboard_bottom_whole"
 //   "keyboard_magnet_plugs"  -- 4 small plugs, glued into the underside magnet slots
 //   "keyboard_faceplate"     -- plate with USB/LED/button openings for the KEYBOARD's back wall (press-fit/snap)
-//   "main_faceplate"         -- taller version of the same plate for the MAIN bottom's front wall (screwed, no thin wall sliver above it)
+//   "main_faceplate"         -- taller version of the same plate for the MAIN bottom's front wall (screwed, no thin wall sliver above it);
+//                               with main_hinged it's taller still, filling the front band's gap above its window (hinged-stls/)
 //   "keyboard_bridge_plate"  -- stepped plate joining keyboard and main bottom for the permanently-attached build
 //   "keyboard_joiner_keys"   -- 3 bow-tie keys for the underside seam pockets
 //   "keyboard_main_keys"     -- 2 stepped bow-tie keys joining the keyboard to the main bottom (underside, across the front/back seam)
