@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: CC-BY-4.0
+// Copyright (c) 2026 Bill Athing -- https://github.com/wdathing/Coco3StreamlineCase
 // ============================================================================
 // CoCo3 (26-3334) "CoCo4-style" 3D Printable Case  —  Parametric OpenSCAD
 // ============================================================================

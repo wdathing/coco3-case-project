@@ -1,0 +1,48 @@
+# Parts built by build_stls.sh / build_stls.ps1 -- one STL per line.
+#
+#   <output folder>  <output file name>  <.scad file>  <part>  [name=value OpenSCAD overrides...]
+#
+# <part> is the value of the file's `part` selector (see its PART SELECTOR block). Overrides are OpenSCAD
+# expressions passed with -D, so they must not contain spaces. Lines starting with # are ignored.
+
+# ---- stl/ : the default (v1.0) case -- two-piece main case, detachable keyboard ----
+stl  main_bottom_left       coco3_case.scad  main_bottom_left
+stl  main_bottom_right      coco3_case.scad  main_bottom_right
+stl  main_bottom_whole      coco3_case.scad  main_bottom_whole
+stl  main_top_left          coco3_case.scad  main_top_left
+stl  main_top_right         coco3_case.scad  main_top_right
+stl  main_top_whole         coco3_case.scad  main_top_whole
+stl  main_faceplate         coco3_case.scad  main_faceplate
+stl  keyboard_bottom_left   coco3_case.scad  keyboard_bottom_left
+stl  keyboard_bottom_right  coco3_case.scad  keyboard_bottom_right
+stl  keyboard_bottom_whole  coco3_case.scad  keyboard_bottom_whole
+stl  keyboard_faceplate     coco3_case.scad  keyboard_faceplate
+stl  keyboard_magnet_plugs  coco3_case.scad  keyboard_magnet_plugs
+stl  keyboard_joiner_keys   coco3_case.scad  keyboard_joiner_keys
+stl  keyboard_main_keys     coco3_case.scad  keyboard_main_keys
+stl  keyboard_bridge_plate  coco3_case.scad  keyboard_bridge_plate
+stl  bezel_oem_whole        coco3_case.scad  bezel_oem_whole
+stl  bezel_oem_left         coco3_case.scad  bezel_oem_left
+stl  bezel_oem_right        coco3_case.scad  bezel_oem_right
+stl  bezel_artemis_whole    coco3_case.scad  bezel_artemis_whole
+stl  bezel_artemis_left     coco3_case.scad  bezel_artemis_left
+stl  bezel_artemis_right    coco3_case.scad  bezel_artemis_right
+stl  usbc_clip              coco3_case.scad  usbc_clip
+stl  fujinet_tray           coco3_case.scad  fujinet_tray
+# one-piece bottom (big printers): its main top has a 5mm taller skirt, hence the _1p top
+stl  bottom_one_piece       coco3_case.scad  bottom_one_piece  one_piece_bottom=true
+stl  main_top_whole_1p      coco3_case.scad  main_top_whole    one_piece_bottom=true
+stl  floppy_filler_plate    coco3_floppy_filler.scad  plate
+stl  floppy_filler_clip     coco3_floppy_filler.scad  clip
+
+# ---- hinged-stls/ : hinged-lid build -- back plate fused to the bottom, lid hinges at the rear ----
+# Only the main case parts differ; everything else comes from stl/.
+hinged-stls  main_bottom_left   coco3_case.scad  main_bottom_left   main_hinged=true
+hinged-stls  main_bottom_right  coco3_case.scad  main_bottom_right  main_hinged=true
+hinged-stls  main_bottom_whole  coco3_case.scad  main_bottom_whole  main_hinged=true
+hinged-stls  main_top_left      coco3_case.scad  main_top_left      main_hinged=true
+hinged-stls  main_top_right     coco3_case.scad  main_top_right     main_hinged=true
+hinged-stls  main_top_whole     coco3_case.scad  main_top_whole     main_hinged=true
+hinged-stls  main_faceplate     coco3_case.scad  main_faceplate     main_hinged=true
+hinged-stls  bottom_one_piece   coco3_case.scad  bottom_one_piece   main_hinged=true  one_piece_bottom=true
+hinged-stls  main_top_whole_1p  coco3_case.scad  main_top_whole     main_hinged=true  one_piece_bottom=true
