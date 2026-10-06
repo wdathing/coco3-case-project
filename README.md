@@ -127,4 +127,4 @@ Copyright (c) 2026 Bill Athing.
 
 Licensed under [Creative Commons Attribution 4.0 International (CC BY 4.0)](LICENSE). You can share, remix and
 sell prints or derivatives, as long as you give credit, e.g. *"CoCo3 Streamline Case" by Bill Athing,
-https://github.com/wdathing/Coco3StreamlineCase*, and note any changes you made.
+https://github.com/wdathing/coco3-case-project*, and note any changes you made.

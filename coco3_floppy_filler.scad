@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: CC-BY-4.0
-// Copyright (c) 2026 Bill Athing -- https://github.com/wdathing/Coco3StreamlineCase
+// Copyright (c) 2026 Bill Athing -- https://github.com/wdathing/coco3-case-project
 // ============================================================================
 // FLOPPY BAY FILLER PLATE -- separate file (per direction: "I wonder if this
 // should maybe be in a separate file too") -- covers one empty 3.5" bay
